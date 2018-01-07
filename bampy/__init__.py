@@ -1,3 +1,4 @@
+from .__version import __version__
 import ctypes as C
 
 import bampy.bam, bampy.bgzf
