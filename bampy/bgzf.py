@@ -22,13 +22,17 @@ class BlockFlags(IntFlag):
     reserved2   = 1 << 6
     reserved3   = 1 << 7
 
+class ExtraFlags(IntFlag):
+    MAX_COMPRESSION = 1 << 2
+    FASTEST         = 1 << 4
+
 class Header(C.LittleEndianStructure):
     _pack_ = 1
     _fields_ = [
         ("id1", C.c_uint8),    # ID1   gzip IDentifier1            uint8 31
         ("id2", C.c_uint8),    # ID2   gzip IDentifier2            uint8 139
         ("compression_method", C.c_uint8),     # CM    gzip Compression Method     uint8 8
-        ("_flags", C.c_uint8),    # FLG   gzip FLaGs                  uint8 4
+        ("flag", C.c_uint8),    # FLG   gzip FLaGs                  uint8 4
         ("modification_time", C.c_uint32),  # MTIME gzip Modification TIME      uint32
         ("extra_flags", C.c_uint8),    # XFL   gzip eXtra FLags            uint8
         ("os", C.c_uint8),     # OS    gzip Operating System       uint8
@@ -45,6 +49,31 @@ class SubField(C.LittleEndianStructure):
         ("SLEN", C.c_uint16) #   SLEN Subfield LENgth uint16 t 2
     ]
 
+class BSIZE(SubField):
+    _pack_ = 1
+    _fields_ = [
+        ("size", C.c_uint16)
+    ]
+    def __init__(self):
+        self.SI1 = 66
+        self.SI2 = 67
+        self.SLEN = C.sizeof(C.c_uint16)
+
+class FixedXLENHeader(Header):
+    _pack_ = 1
+    _fields_ = [
+        ("BSIZE", BSIZE)
+    ]
+    def __init__(self):
+        self.id1 = 31
+        self.id2 = 139
+        self.compression_method = 8
+        self.flag = BlockFlags.FEXTRA
+        self.modification_time = 0
+        self.extra_flags = ExtraFlags.MAX_COMPRESSION
+        self.os = 255
+        self.extra_length = C.sizeof(BSIZE)
+
 class Trailer(C.LittleEndianStructure):
     _pack_ = 1
     _fields_ = [
@@ -52,12 +81,18 @@ class Trailer(C.LittleEndianStructure):
         ("uncompressed_size", C.c_uint32)   # ISIZE Input SIZE (length of uncompressed data) uint32
     ]
 
+def compressToBuffer(buffer, offset, data, no_split = True):
+    if not isinstance(data, list):
+        data = [data]
+    for datum in data:
+
+
 class Block:
     __slots__ = '_header', '_trailer', 'extra_fields', 'size', 'flags'
 
     def __init__(self, header: Header, extra_fields: dict, trailer: Trailer):
         self._header = header
-        self.flags = BlockFlags(header._flags)
+        self.flags = BlockFlags(header.flag)
         self.extra_fields = extra_fields
         self.size = Block._getSize(extra_fields)
         self._trailer = trailer
@@ -68,7 +103,7 @@ class Block:
             try:
                 return getattr(self._header, item)
             except AttributeError:
-                    return getattr(self._trailer, item)
+                return getattr(self._trailer, item)
 
     def __setattr__(self, key, value):
         if hasattr(self._header, key):
@@ -100,9 +135,6 @@ class Block:
 
         return Block(header, extra_fields, trailer), buffer[offset : trailer_start]
 
-    def toBuffer(self, buffer):
-        pass #TODO
-
     @staticmethod
     def from_stream(stream, _magic = None) -> ('Block', memoryview):
         header_buffer = bytearray(C.sizeof(Header))
@@ -133,9 +165,6 @@ class Block:
         trailer = Trailer.from_buffer(trailer)
 
         return Block(header, extra_fields, trailer), buffer
-
-    def to_stream(self, stream):
-        pass #TODO
 
     @staticmethod
     def _parseExtra(buffer):
