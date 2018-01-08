@@ -104,9 +104,14 @@ class Block:
         pass #TODO
 
     @staticmethod
-    def fromStream(stream) -> ('Block', memoryview):
+    def from_stream(stream, _magic = None) -> ('Block', memoryview):
         header_buffer = bytearray(C.sizeof(Header))
-        header_len = stream.readinto(header_buffer)
+        # Provide a friendly way of peeking into a stream for data type discovery
+        if _magic:
+            header_buffer[:len(_magic)] = _magic
+            header_len = stream.readinto(header_buffer[len(_magic):])
+        else:
+            header_len = stream.readinto(header_buffer)
         if header_len == 0:
             raise EOFError()
         assert header_len == C.sizeof(Header)
@@ -129,7 +134,7 @@ class Block:
 
         return Block(header, extra_fields, trailer), buffer
 
-    def toStream(self, stream):
+    def to_stream(self, stream):
         pass #TODO
 
     @staticmethod
