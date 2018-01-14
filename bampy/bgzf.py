@@ -26,6 +26,7 @@ class ExtraFlags(IntFlag):
     MAX_COMPRESSION = 1 << 2
     FASTEST         = 1 << 4
 
+#TODO Add check for other block flags
 class Header(C.LittleEndianStructure):
     _pack_ = 1
     _fields_ = [
@@ -52,7 +53,7 @@ class SubField(C.LittleEndianStructure):
 class BSIZE(SubField):
     _pack_ = 1
     _fields_ = [
-        ("size", C.c_uint16)
+        ("value", C.c_uint16)
     ]
     def __init__(self):
         self.SI1 = 66
@@ -80,12 +81,6 @@ class Trailer(C.LittleEndianStructure):
         ("CRC32", C.c_uint32),              # CRC32 CRC-32                      uint32
         ("uncompressed_size", C.c_uint32)   # ISIZE Input SIZE (length of uncompressed data) uint32
     ]
-
-def compressToBuffer(buffer, offset, data, no_split = True):
-    if not isinstance(data, list):
-        data = [data]
-    for datum in data:
-
 
 class Block:
     __slots__ = '_header', '_trailer', 'extra_fields', 'size', 'flags'

@@ -97,6 +97,18 @@ def header_from_buffer(buffer):
         refs.append(Reference(toStr(name), seq_length.value))
     return header, refs, offset
 
+def QScoreToStr(data):
+    return ''.join(map(lambda x:chr(x+33), data))
+
+def toBytes(data):
+    return data.value
+
+def toStr(data):
+    if isinstance(data.value, bytes):
+        return data.value.decode('ASCII')
+    else:
+        return str(data.value)
+
 class RecordHeader(C.LittleEndianStructure):
     _pack_ = 1
     _fields_ = [
@@ -124,6 +136,9 @@ class PackedSequence:
             self._buffer = bytes((length + 1) // 2)
 
         self._length = length
+
+    def __bytes__(self):
+        return self._buffer
 
     def __str__(self):
         return "".join(SEQUENCE_VALUES[c] for c in self)
@@ -200,23 +215,18 @@ class PackedSequence:
     def unpack(self):
         return bytes(self)
 
-def QScoreToStr(data):
-    return ''.join(map(lambda x:chr(x+33), data))
-
-def toBytes(data):
-    return data.value
-
-def toStr(data):
-    if isinstance(data.value, bytes):
-        return data.value.decode('ASCII')
-    else:
-        return str(data.value)
+    def copy(self):
+        return PackedSequence(bytearray(self._buffer), self._length)
+### END: PackedSequence
 
 class PackedCIGAR:
     __slots__ = "_buffer"
 
     def __init__(self, buffer: memoryview):
         self._buffer = buffer or bytearray()
+
+    def __bytes__(self):
+        return self._buffer
 
     def __str__(self):
         return "".join("{}{}".format(c[0], OP_CODES[c[1]]) for c in self)
@@ -264,6 +274,11 @@ class PackedCIGAR:
     def unpack(self):
         return list(self)
 
+    def copy(self):
+        return PackedCIGAR(bytearray(self._buffer))
+
+### END: PackedCIGAR
+
 class TagHeader(C.LittleEndianStructure):
     _pack_ = 1
     _fields_ = [
@@ -300,6 +315,7 @@ class Tag:
         if self._buffer is not None:
             length = C.sizeof(TagHeader)
             if self._header.value_type == b'B':
+                #TODO make sure this is right
                 length += C.sizeof(C.c_uint32) + (len(self._buffer))
             elif self._header.value_type in b'HZ':
                 length += len(self._buffer)
@@ -325,13 +341,13 @@ class Tag:
         return getattr(self._header, item)
 
     def __getitem__(self, i):
-        if self._buffer:
-            if self._header.value_type in b'ZBH':
+        if self._header.value_type in b'ZBH':
+            if self._buffer:
                 return self._buffer[i]
             else:
-                return self._buffer
+                raise ValueError("Buffer not initialised.")
         else:
-            raise ValueError("Buffer not initialised.")
+            raise TypeError('{} tag type is not subscriptable.'.format(TAG_TYPES[self._header.value_type]))
 
     def __setitem__(self, i, value):
         if self._buffer:
@@ -342,7 +358,15 @@ class Tag:
         else:
             raise ValueError("Buffer not initialised.")
 
+    def copy(self):
+        new = Tag.__new__(Tag)
+        new._header = TagHeader.from_buffer_copy(self._header)
+        new._buffer = bytearray(self._buffer)
+        return new
+### END: Tag
+
 class Record:
+    __slots__ = '_header', 'name', 'cigar', 'sequence', 'quality_scores', 'tags', 'reference', 'next_reference'
     def __init__(self, header = RecordHeader(), name = "*", cigar = [], sequence = bytearray(), quality_scores = bytearray(), tags = bytearray(), references = None):
         self._header = header
         #TODO init header to defaults
@@ -355,18 +379,15 @@ class Record:
         self.next_reference = None if not references or header.next_reference_id == -1 else references[header.next_reference_id]
 
     @staticmethod
-    def fromBuffer(buffer, offset = 0, references = []):
-        buffer = memoryview(buffer)
+    def _data_from_buffer(header, buffer, offset = 0):
         start = offset
-        header = RecordHeader.from_buffer(buffer, offset)
-        offset += C.sizeof(RecordHeader)
         # Name
         name = (C.c_char * header.name_length)
         name.__repr__ = toBytes
         name.__str__ = toStr
         name = name.from_buffer(buffer, offset)
         offset += header.name_length
-        if not header.name_length % 4: offset += 4 - header.name_length % 4 # Handle extra nulls
+        if not header.name_length % 4: offset += 4 - header.name_length % 4  # Handle extra nulls
         # Cigar
         cigar = (C.c_uint32.__ctype_le__ * header.cigar_length).from_buffer(buffer, offset)
         cigar = PackedCIGAR(cigar)
@@ -382,35 +403,72 @@ class Record:
         quality_scores = quality_scores.from_buffer(buffer, offset)
         offset += header.sequence_length
         # Tags
-        if offset < start + header.block_size:
+        if offset < start + header.block_size - C.sizeof(RecordHeader):
             tags = (C.c_ubyte * (header.block_size + C.sizeof(C.c_uint32) - offset + start)).from_buffer(buffer, offset)
         else:
             tags = {}
-        return Record(header, name, cigar, sequence, quality_scores, tags, references)
+        return name, cigar, sequence, quality_scores, tags
 
     @staticmethod
-    def fromStream(stream):
-        #TODO
-        return Record()
+    def from_buffer(buffer, offset = 0, references = []):
+        buffer = memoryview(buffer)
+        header = RecordHeader.from_buffer(buffer, offset)
+        offset += C.sizeof(RecordHeader)
+        return Record(header, *Record._data_from_buffer(header, buffer, offset), references)
+
+    def to_buffer(self, buffer, offset):
+        buffer = memoryview(buffer)
+        self.pack()
+        new = Record.__new__(Record)
+        new._header = RecordHeader.from_buffer(buffer, offset)
+        C.memmove(new._header , self._header, C.sizeof(RecordHeader))
+        offset += C.sizeof(RecordHeader)
+        new.name, new.cigar, new.sequence, new.quality_scores, new.tags = Record._data_from_buffer(new._header, buffer, offset)
+        #TODO reduce to one memmove of entire block if contiguous
+        C.memmove(new.name, self.name, len(self.name))
+        C.memmove(new.cigar, self.cigar, len(self.cigar))
+        C.memmove(new.sequence, self.sequence, len(self.sequence))
+        C.memmove(new.quality_scores, self.quality_scores, len(self.quality_scores))
+        C.memmove(new.tags, self.tags, len(self.tags))
+        new.reference = self.reference
+        new.next_reference = self.next_reference
+        return new
+
+    @staticmethod
+    def from_stream(stream, references = []):
+        header = bytearray(C.sizeof(RecordHeader))
+        stream.readinto(header)
+        header = RecordHeader.from_buffer(header)
+        data = bytearray(header.block_size - C.sizeof(RecordHeader) + C.sizeof(C.c_int32))
+        stream.readinto(data)
+        return Record(header, *Record._data_from_buffer(header, data), references)
+
+    def to_stream(self, stream):
+        self.pack()
+        stream.write(self._header)
+        stream.write(self.name)
+        stream.write(self.cigar)
+        stream.write(self.sequence)
+        stream.write(self.quality_scores)
+        stream.write(self.tags)
 
     def __getattribute__(self, item):
-        if item == "tags":
-            tags_buffer = super().__getattribute__(item)
-            if not isinstance(tags_buffer, dict):
-                #TODO This could be optimised by assuming that the tags are sorted appropriately and only unpacking up to the requested tag
-                offset = 0
-                tags = {}
-                while offset < len(tags_buffer):
-                    tag = Tag(tags_buffer, offset)
-                    if tag.size():
-                        tags[tag.tag] = tag
-                    else:
-                        raise ValueError("Unexpected buffer size.")
-                    offset += tag.size()
-                self.tags = tags
-                return tags
-            return tags_buffer
-        return super().__getattribute__(item)
+        attr = super().__getattribute__(item)
+        if item == "tags" and not isinstance(attr, dict):
+            #TODO This could be optimised by assuming that the tags are sorted appropriately and only unpacking up to the requested tag
+            offset = 0
+            tags = {}
+            while offset < len(attr):
+                tag = Tag(attr, offset)
+                if tag.size():
+                    tags[tag.tag] = tag
+                else:
+                    raise ValueError("Unexpected buffer size.")
+                offset += tag.size()
+            self.tags = tags
+            return tags
+
+        return attr
 
     def __getattr__(self, item):
         try:
@@ -423,6 +481,7 @@ class Record:
                 raise
 
     def pack(self):
+        #TODO update header, pack tags?
         self.sequence = PackedSequence.pack(self.sequence)
         self.cigar = PackedCIGAR.pack(self.cigar)
 
@@ -447,3 +506,20 @@ class Record:
 
     def __len__(self):
         return self.block_size + C.sizeof(C.c_uint32)
+
+    def copy(self):
+        new = Record.__new__(Record)
+        new._header = RecordHeader.from_buffer_copy(self._header)
+        new.name = bytearray(self.name)
+        new.cigar = self.cigar.copy() if isinstance(self.cigar, PackedCIGAR) else bytearray(self.cigar)
+        new.sequence = self.sequence.copy() if isinstance(self.sequence) else bytearray(self.sequence)
+        new.quality_scores = bytearray(self.quality_scores)
+        new.tags = {}
+        for value in self.tags.values():
+            tag = value.copy()
+            new.tags[tag.tag] = tag
+        new.reference = self.reference
+        new.next_reference = self.next_reference
+        return new
+
+### END: Record

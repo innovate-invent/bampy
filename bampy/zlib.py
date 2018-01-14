@@ -82,40 +82,66 @@ class zState(C.Structure):
         ("reserved", C.c_ulong),
     ]
 
-def raw_compress(src, dest, level=6, wbits=MAX_WBITS, mode=Z_FINISH, memlevel=8, dictionary=None, state=None) -> (int, zState):
+def raw_compress(src = None, dest = None, state=None, level=6, wbits=MAX_WBITS, mode=Z_FINISH, memlevel=8, dictionary=None) -> (int, zState):
+    if not state and not (src and dest):
+        raise ValueError("No initialised state. Provide src and dest on first call.")
+
     if state:
         err = Z_OK
     else:
         state = zState()
-        state.next_in = C.byref(src)
+        err = Z_NULL
+
+    if src:
+        state.next_in = C.cast(C.pointer(src), C.POINTER(C.c_ubyte))
         state.avail_in = len(src)
-        state.next_out = C.byref(dest)
+    elif src == Z_NULL:
+        state.next_in = Z_NULL
+        state.avail_in = Z_NULL
+
+    if dest:
+        state.next_out = C.cast(C.pointer(dest), C.POINTER(C.c_ubyte))
         state.avail_out = Z_NULL
+
+    if err == Z_NULL:
         err = _zlib.deflateInit2_(C.byref(state), level, Z_DEFLATED, -wbits, memlevel, Z_DEFAULT_STRATEGY, ZLIB_VERSION, C.sizeof(zState))
         if err == Z_OK and dictionary:
             err = _zlib.deflateSetDictionary(C.byref(state), C.cast(C.c_char_p(dictionary), C.POINTER(C.c_ubyte)), len(dictionary))
 
     if err == Z_OK:
-        _zlib.deflate(C.byref(state), mode)
+        err = _zlib.deflate(C.byref(state), mode)
 
     if err == Z_STREAM_END:
         return _zlib.deflateEnd(C.byref(state)), None
 
     return err, state
 
-def raw_decompress(src, dest, wbits=MAX_WBITS, mode=Z_FINISH, dictionary=None, state=None) -> (int, zState):
+def raw_decompress(src=None, dest=None, state=None, wbits=MAX_WBITS, mode=Z_FINISH, dictionary=None) -> (int, zState):
+    if not state and not (src and dest):
+        raise ValueError("No initialised state. Provide src and dest on first call.")
+
     if state:
         err = Z_OK
     else:
         state = zState()
+        err = Z_NULL
+
+    if src:
         state.next_in = C.cast(C.pointer(src), C.POINTER(C.c_ubyte))
         state.avail_in = len(src)
+    elif src == Z_NULL:
+        state.next_in = Z_NULL
+        state.avail_in = Z_NULL
+
+    if dest:
         state.next_out = C.cast(C.pointer(dest), C.POINTER(C.c_ubyte))
         state.avail_out = len(dest)
+
+    if err == Z_NULL:
         err = _zlib.inflateInit2_(C.byref(state), -wbits, ZLIB_VERSION, C.sizeof(zState))
 
     if err == Z_OK:
-        _zlib.inflate(C.byref(state), mode)
+        err = _zlib.inflate(C.byref(state), mode)
         if err == Z_NEED_DICT:
             assert dictionary, err
             err = _zlib.inflateSetDictionary(C.byref(state), C.cast(C.c_char_p(dictionary), C.POINTER(C.c_ubyte)), len(dictionary))
