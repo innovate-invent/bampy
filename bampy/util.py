@@ -84,20 +84,19 @@ def _writeBGZF(records, buffer, offset = 0, stream=None):
                 offset = 0
             header = FixedXLENHeader.from_buffer(buffer, offset)
             offset += C.sizeof(FixedXLENHeader)
-            cdata = (C.c_ubyte * (MAX_BLOCK_SIZE - C.sizeof(FixedXLENHeader) - C.sizeof(Trailer))).from_buffer(buffer,
-                                                                                                               offset)
+            cdata = (C.c_ubyte * (MAX_BLOCK_SIZE - C.sizeof(FixedXLENHeader) - C.sizeof(Trailer))).from_buffer(buffer, offset)
 
         record.pack()
-        res, state = zlib.raw_compress(record._header, cdata, method=zlib.Z_NO_FLUSH, state=state)
-        res, state = zlib.raw_compress(record.name, method=zlib.Z_NO_FLUSH, state=state)
-        res, state = zlib.raw_compress(record.cigar, method=zlib.Z_NO_FLUSH, state=state)
-        res, state = zlib.raw_compress(record.sequence, method=zlib.Z_NO_FLUSH, state=state)
-        res, state = zlib.raw_compress(record.quality_scores, method=zlib.Z_NO_FLUSH, state=state)
+        res, state = zlib.raw_compress(record._header, cdata, mode=zlib.Z_NO_FLUSH, state=state)
+        res, state = zlib.raw_compress(record.name, mode=zlib.Z_NO_FLUSH, state=state)
+        res, state = zlib.raw_compress(record.cigar, mode=zlib.Z_NO_FLUSH, state=state)
+        res, state = zlib.raw_compress(record.sequence, mode=zlib.Z_NO_FLUSH, state=state)
+        res, state = zlib.raw_compress(record.quality_scores, mode=zlib.Z_NO_FLUSH, state=state)
         for tag in record.tags.values():
-            res, state = zlib.raw_compress(tag._header, method=zlib.Z_NO_FLUSH, state=state)
-            res, state = zlib.raw_compress(tag._buffer, method=zlib.Z_NO_FLUSH, state=state)
+            res, state = zlib.raw_compress(tag._header, mode=zlib.Z_NO_FLUSH, state=state)
+            res, state = zlib.raw_compress(tag._buffer, mode=zlib.Z_NO_FLUSH, state=state)
 
-        res, state = zlib.raw_compress(method=zlib.Z_PARTIAL_FLUSH, state=state)  # Ensure state.avail_out is accurate
+        res, state = zlib.raw_compress(mode=zlib.Z_PARTIAL_FLUSH, state=state)  # Ensure state.avail_out is accurate
 
     state, offset, t_in, t_out = _finishBufferedBlock(buffer, offset, state, header)
     total_in += t_in
@@ -112,7 +111,7 @@ def _writeBGZF(records, buffer, offset = 0, stream=None):
 def _finishBufferedBlock(buffer, offset, state, header, record=None):
     if state and (record is None or state.avail_out < len(record)):
         # If cant fit next record in block size limit, finalise block
-        zlib.raw_compress(zlib.Z_NULL, method=zlib.Z_FINISH, state=state)  # Flush last of state buffer
+        zlib.raw_compress(zlib.Z_NULL, mode=zlib.Z_FINISH, state=state)  # Flush last of state buffer
         header.BSIZE.value = state.total_out - 1  # This heavily relies on the random access ability of the provided buffer
         offset += state.total_out
         trailer = Trailer.from_buffer(buffer, offset)
@@ -125,6 +124,6 @@ def _finishBufferedBlock(buffer, offset, state, header, record=None):
 def bufferWriter_BGZF(records, buffer, offset = 0):
     return _writeBGZF(records, buffer, offset)
 
-def streamWriter_BGZF(stream, records):
+def streamWriter_BGZF(records, stream):
     return _writeBGZF(records, bytearray(MAX_BLOCK_SIZE), stream=stream)
 

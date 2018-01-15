@@ -1,5 +1,6 @@
 import ctypes as C
 from enum import IntFlag
+import bampy.sam as sam
 
 SEQUENCE_VALUES = tuple("=ACMGRSVTWYHKDBN")
 OP_CODES = tuple("MIDNSHP=X")
@@ -283,7 +284,7 @@ class TagHeader(C.LittleEndianStructure):
     _pack_ = 1
     _fields_ = [
         ("tag", C.c_char * 2),     # tag Two-character tag char[2]
-        ("value_type", C.c_char),  # val_type Value type: AcCsSiIfZHB22,23 char
+        ("value_type", C.c_char),  # val_type Value type: AcCsSiIfZHB char
     ]
 
 class Tag:
@@ -334,6 +335,15 @@ class Tag:
         else:
             return 0
 
+    @staticmethod
+    def from_sam(column):
+        tag = Tag.__new__(Tag)
+        header = TagHeader()
+        tag._header = header
+        header.tag, value_type, tag._buffer = column.split(b':', 2)
+        header.value_type = int(value_type)
+        return tag
+
     def __str__(self):
         return "{}:{}:{}".format(self._header.tag.decode('ASCII'), self._header.value_type.decode('ASCII') if self._header.value_type in b'AifZHB' else 'i', toStr(self._buffer))
 
@@ -367,7 +377,7 @@ class Tag:
 
 class Record:
     __slots__ = '_header', 'name', 'cigar', 'sequence', 'quality_scores', 'tags', 'reference', 'next_reference'
-    def __init__(self, header = RecordHeader(), name = "*", cigar = [], sequence = bytearray(), quality_scores = bytearray(), tags = bytearray(), references = None):
+    def __init__(self, header = RecordHeader(), name = b"*", cigar = [], sequence = bytearray(), quality_scores = bytearray(), tags = bytearray(), references = None):
         self._header = header
         #TODO init header to defaults
         self.name = name
@@ -488,6 +498,38 @@ class Record:
     def unpack(self):
         self.sequence = self.sequence.unpack()
         self.cigar = self.cigar.unpack()
+
+    @staticmethod
+    def from_sam(line, references):
+        name, flags, reference_name, position, mapping_quality, cigar, next_reference_name, next_position, template_length, sequence, quality_scores, *_tags = line.split(b"\t")
+        flags = RecordFlags(int(flags))
+        position = int(position) - 1
+        mapping_quality = int(mapping_quality)
+        next_position = int(next_position) - 1
+        template_length = int(template_length)
+        cigar = [(int(count), OP_CODES.index(op)) for count, op in sam.cigar_re.findall(cigar)]
+        sequence = bytearray(SEQUENCE_VALUES.index(c) for c in sequence)
+        quality_scores = bytearray(b - 33 for b in quality_scores)
+        tags = {}
+        for tag in _tags:
+            tag = Tag.from_sam(tag)
+            tags[tag.tag] = tag
+
+        header = RecordHeader()
+        #header.block_size = data[0]
+        header.reference_id = next(i for i, ref in enumerate(references) if ref.name == reference_name)
+        header.position = position
+        header.name_length = len(name)
+        header.mapping_quality = mapping_quality
+        #header.bin = 0 #TODO
+        header.cigar_length = len(cigar)
+        header.flag = flags
+        header.sequence_length = len(sequence)
+        header.next_reference_id = next(i for i, ref in enumerate(references) if ref.name == next_reference_name)
+        header.next_position = next_position
+        header.template_length = template_length
+
+        return Record(header, name, cigar, sequence, quality_scores, tags, references)
 
     def __str__(self):
         return "{qname}\t{flag}\t{rname}\t{pos}\t{mapq}\t{cigar}\t{rnext}\t{pnext}\t{tlen}\t{seq}\t{qual}".format(
