@@ -1,4 +1,5 @@
-from bampy.util import streamReader_BGZF
+from bampy.util import streamReader_BGZF, streamWriter_BGZF
+import bampy.sam as sam
 
 stream_in = open("normal.bam", 'rb')
 stream_out = open("normal.bam", 'rb')
