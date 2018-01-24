@@ -1,15 +1,6 @@
 import ctypes as C
+from . import InvalidBGZF
 from enum import IntFlag
-
-MAX_BLOCK_SIZE = 2 ** 16 - 1
-
-MAX_BLOCK_BUFFER_TYPE = C.c_ubyte * MAX_BLOCK_SIZE
-
-def isBGZF(buffer):
-    return buffer[:2] == b'\x1F\x8B'
-
-class InvalidBGZF(ValueError):
-    pass
 
 # Taken from gzip spec
 class BlockFlags(IntFlag):
@@ -112,7 +103,7 @@ class Block:
         return self.size
 
     @staticmethod
-    def fromBuffer(buffer, offset) -> ('Block', memoryview):
+    def from_buffer(buffer, offset = 0) -> ('Block', memoryview):
         start = offset
         buffer = memoryview(buffer)
         header = Header.from_buffer(buffer, offset)

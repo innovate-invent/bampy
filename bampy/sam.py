@@ -1,7 +1,7 @@
 import re
 from collections import defaultdict
 
-import bampy.bam as bam
+from . import bam
 
 header_re = re.compile(r"\t([A-Za-z][A-Za-z0-9]):([ -~]+)")
 cigar_re = re.compile(r"([0-9]+)([MIDNSHPX=])")
@@ -16,8 +16,7 @@ def header_from_stream(stream, _magic = None):
         else:
             header[tag].append({m[0]:m[1] for m in header_re.findall(line)})
 
-    return header, [bam.Reference(ref[b'SN'], int(ref[b'LN'])) for ref in header[b'SQ']], 0
-
+    return header, [bam.Reference(ref[b'SN'], int(ref[b'LN'])) for ref in header.pop(b'SQ')], 0
 
 def header_from_buffer(buffer, offset = 0):
     header = defaultdict(list)
@@ -31,26 +30,27 @@ def header_from_buffer(buffer, offset = 0):
             header[tag].append({m[0]: m[1] for m in header_re.findall(line)})
         offset = end + 1
 
-    return header, [bam.Reference(ref[b'SN'], int(ref[b'LN'])) for ref in header[b'SQ']], offset
+    return header, [bam.Reference(ref[b'SN'], int(ref[b'LN'])) for ref in header.pop(b'SQ')], offset
 
-def streamReader(references, stream):
-    while True:
-        yield bam.Record.from_sam(stream.readline(), references)
+def pack_header(header, references=()):
+    if isinstance(header, dict):
+        HD = bytearray()
+        buffer = bytearray()
+        for tag, v in header.items():
+            if tag == b'HD':
+                HD = b'@HD\t' + b'\t'.join(attr + b':' + value for attr, value in v[0].items()) + b'\n'
+            elif tag == b'CO':
+                for line in v:
+                    buffer += b'@CO\t' + line + b'\n'
+            else:
+                for line in v:
+                    buffer += b'@' + tag + bytes(b'\t' + attr + b':' + value for attr, value in line.items()) + b'\n'
 
-def bufferReader(references, buffer, offset = 0):
-    while offset < len(buffer):
-        end = buffer.find(b'\n', offset)
-        yield bam.Record.from_sam(buffer[offset, end], references)
-        offset = end + 1
+        assert HD, "No HD tag provided."
+        assert header[b'SQ'] or references, "No references provided."
+        header = HD + buffer
 
-def streamWriter(records, stream):
-    for record in records:
-        stream.writeline(repr(record))
+    for ref in references:
+        header += bytes(ref)
 
-def bufferWriter(records, buffer, offset = 0):
-    for record in records:
-        r = repr(record)
-        l = len(r)
-        buffer[offset:offset + l] = r
-        offset += l
-    return offset
+    return header
