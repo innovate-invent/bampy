@@ -55,6 +55,8 @@ Z_DEFLATED = 8
 
 Z_NULL = 0  #  for initializing zalloc, zfree, opaque
 
+NULL_PTR = C.cast(0, C.POINTER(C.c_ubyte))
+
 if platform.system() == 'Windows':
     path = util.find_library("zlib1.dll")
     if not path:
@@ -113,7 +115,7 @@ def raw_compress(src=None, dest=None, mode=Z_FINISH, state=None, level=6, wbits=
         state.next_in = C.cast(C.pointer(src), C.POINTER(C.c_ubyte))
         state.avail_in = len(src)
     elif src == Z_NULL:
-        state.next_in = Z_NULL
+        state.next_in = NULL_PTR
         state.avail_in = Z_NULL
 
     if dest:

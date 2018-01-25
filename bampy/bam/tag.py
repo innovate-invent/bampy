@@ -1,5 +1,5 @@
 import ctypes as C
-from . import InvalidBAM, _to_str
+from .util import InvalidBAM, _to_str
 
 BTAG_TYPES = {b'c': C.c_int8, b'C': C.c_uint8, b's': C.c_int16, b'S': C.c_uint16, b'i': C.c_int32, b'I': C.c_uint32, b'f': C.c_float}
 TAG_TYPES = {b'A': C.c_char}
@@ -13,6 +13,10 @@ class TagHeader(C.LittleEndianStructure):
         ("value_type", C.c_char),  # val_type Value type: AcCsSiIfZHB char
     ]
 
+    def __len__(self):
+        return SIZEOF_TAGHEADER
+
+SIZEOF_TAGHEADER = C.sizeof(TagHeader)
 
 class Tag:
     __slots__ = '_header', '_buffer'
@@ -77,10 +81,16 @@ class Tag:
                                  self._header.value_type.decode('ASCII') if self._header.value_type in b'AifZHB' else 'i', _to_str(self._buffer))
 
     def __bytes__(self):
-        return self._header.tag + b':' + (self._header.value_type if self._header.value_type in b'AifZHB' else b'i') + b':' + self._buffer
+        if self._header.value_type in b'ZH':
+            value = self._buffer[:-1] # Omit the trailing Null
+        elif self._header.value_type in b'AB':
+            value = self._buffer
+        else:
+            value = str(self._buffer.value).encode('ASCII')
+        return self._header.tag + b':' + (self._header.value_type if self._header.value_type in b'AifZHB' else b'i') + b':' + value
 
     def pack(self):
-        return bytes(self._header) + bytes(self._buffer)
+        return bytearray(self._header) + bytearray(self._buffer)
 
     def __getattr__(self, item):
         return getattr(self._header, item)

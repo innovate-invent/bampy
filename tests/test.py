@@ -1,5 +1,3 @@
-from collections import deque
-import os
 from bampy.util import open_buffer
 from bampy import Reader, Writer
 
@@ -14,7 +12,7 @@ offset = 0
 
 stream_reader = Reader(stream_in)
 
-header, ref = stream_reader.header, stream_reader.references
+header, ref = stream_reader.header, () #stream_reader.references
 
 stream_writer = Writer.bgzf(stream_out, 0, header, ref)
 buffer_writer = Writer.bgzf(buffer_out, 0, header, ref)
@@ -22,8 +20,13 @@ buffer_writer = Writer.bgzf(buffer_out, 0, header, ref)
 stream_writer_sam = Writer.sam(stream_out_sam, 0, header, ref)
 buffer_writer_sam = Writer.sam(buffer_out_sam, 0, header, ref)
 
+c = 0
+
 for record in stream_reader:
-    stream_writer(record)
-    buffer_writer(record)
+    c += 1
+    #stream_writer(record)
+    #buffer_writer(record)
     stream_writer_sam(record)
-    buffer_writer_sam(record)
+    #buffer_writer_sam(record)
+
+print(c)

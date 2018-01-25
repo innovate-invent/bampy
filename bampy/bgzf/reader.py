@@ -1,33 +1,22 @@
 from . import zlib
 from .block import Block
 import ctypes as C
+import io
 
-class Reader:
-    def __init__(self, input, offset:int = 0, peek = None):
+
+def Reader(input, offset:int = 0, peek = None):
+    if isinstance(input, (io.RawIOBase, io.BufferedIOBase)):
+        return StreamReader(input, peek)
+    else:
+        return BufferReader(input, offset)
+
+
+class _Reader:
+    def __init__(self, input):
         self.total_in = 0
         self.total_out = 0
         self.remaining = 0
-        if isinstance(input, 'RawIOBase'):
-            self._peek = peek
-            self.__next__ = self._stream
-        else:
-            self.__next__ = self._buffer
-            self._len = len(input)
-            self.offset = offset
         self._input = input
-
-    def _stream(self):
-        try:
-            return self._inflate(*Block.from_stream(self._input, self._peek))
-        except EOFError:
-            raise StopIteration()
-
-    def _buffer(self):
-        if self.offset < self._len:
-            block, cdata = Block.from_buffer(self._input, self.offset)
-            self.offset += len(block)
-            return self._inflate(block, cdata)
-        raise StopIteration()
 
     def _inflate(self, block, cdata):
         if self.remaining:
@@ -39,7 +28,7 @@ class Reader:
 
         cdata = (C.c_ubyte * len(cdata)).from_buffer(cdata)
         res, state = zlib.raw_decompress(cdata, data)
-        assert res == zlib.Z_OK, "Invalid zlib data."
+        assert res in (zlib.Z_OK, zlib.Z_STREAM_END), "Invalid zlib data."
 
         self.total_in += state.total_in
         self.total_out += state.total_out
@@ -62,3 +51,36 @@ class Reader:
 
     def __next__(self):
         raise NotImplementedError()
+
+
+class StreamReader(_Reader):
+    def __init__(self, input, peek=None):
+        super().__init__(input)
+        self._peek = peek
+
+    def __next__(self):
+        try:
+            while True:
+                block, cdata = Block.from_stream(self._input, self._peek)
+                if block.uncompressed_size: # Skip empty blocks
+                    break
+            self._inflate(block, cdata)
+            self._peek = None
+            return self._data
+        except EOFError:
+            raise StopIteration()
+
+
+class BufferReader(_Reader):
+    def __init__(self, input, offset=0):
+        super().__init__(input)
+        self._len = len(input)
+        self.offset = offset
+
+    def __next__(self):
+        while self.offset < self._len:
+            block, cdata = Block.from_buffer(self._input, self.offset)
+            self.offset += len(block)
+            if block.uncompressed_size: # Skip empty blocks
+                return self._inflate(block, cdata)
+        raise StopIteration()

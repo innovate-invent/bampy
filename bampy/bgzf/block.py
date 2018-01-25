@@ -1,5 +1,5 @@
 import ctypes as C
-from . import InvalidBGZF
+from .util import InvalidBGZF, MAX_BLOCK_SIZE
 from enum import IntFlag
 
 # Taken from gzip spec
@@ -30,6 +30,9 @@ class Header(C.LittleEndianStructure):
         ("os", C.c_uint8),     # OS    gzip Operating System       uint8
         ("extra_length", C.c_uint16)   # XLEN  gzip eXtra LENgth           uint16
     ]
+
+
+SIZEOF_HEADER = C.sizeof(Header)
 
 # Extra subfield(s) (total size=XLEN)
 #   Additional RFC1952 extra subfields if present
@@ -72,6 +75,8 @@ class Trailer(C.LittleEndianStructure):
         ("CRC32", C.c_uint32),              # CRC32 CRC-32                      uint32
         ("uncompressed_size", C.c_uint32)   # ISIZE Input SIZE (length of uncompressed data) uint32
     ]
+
+MAX_CDATA_SIZE = MAX_BLOCK_SIZE - C.sizeof(FixedXLENHeader) - C.sizeof(Trailer)
 
 class Block:
     __slots__ = '_header', '_trailer', 'extra_fields', 'size', 'flags'
@@ -123,16 +128,17 @@ class Block:
 
     @staticmethod
     def from_stream(stream, _magic = None) -> ('Block', memoryview):
-        header_buffer = bytearray(C.sizeof(Header))
         # Provide a friendly way of peeking into a stream for data type discovery
         if _magic:
-            header_buffer[:len(_magic)] = _magic
-            header_len = stream.readinto(header_buffer[len(_magic):])
+            header_buffer = bytearray(SIZEOF_HEADER - len(_magic))
+            header_len = stream.readinto(header_buffer) + len(_magic)
+            header_buffer = _magic + header_buffer
         else:
+            header_buffer = bytearray(SIZEOF_HEADER)
             header_len = stream.readinto(header_buffer)
         if header_len == 0:
             raise EOFError()
-        assert header_len == C.sizeof(Header)
+        assert header_len == SIZEOF_HEADER
         header = Header.from_buffer(header_buffer)
         if header.id1 != 31 and header.id2 != 139:
             raise InvalidBGZF("Invalid block header found: ID1: {} ID2: {}".format(header.id1, header.id2))
@@ -141,7 +147,7 @@ class Block:
         assert stream.readinto(extra_fields_buffer) == header.extra_length
         extra_fields = Block._parseExtra(extra_fields_buffer)
 
-        data_size = Block._getSize(extra_fields) - C.sizeof(Header) - C.sizeof(Trailer) - header.extra_length
+        data_size = Block._getSize(extra_fields) - SIZEOF_HEADER - C.sizeof(Trailer) - header.extra_length
         buffer = memoryview(bytearray(data_size))
 
         assert stream.readinto(buffer) == data_size
@@ -166,7 +172,9 @@ class Block:
     @staticmethod
     def _getSize(extra_fields):
         # Load BGZF required BC field
-        size = C.c_uint16.from_buffer_copy(extra_fields.get(b'BC')).value + 1  # type: int
-        if size is None:
-            raise InvalidBGZF("Missing block size field.")
-        return size
+        BC = extra_fields.get(b'BC')
+        if BC:
+            size = C.c_uint16.from_buffer_copy(BC).value + 1  # type: int
+            if size is not None:
+                return size
+        raise InvalidBGZF("Missing block size field.")

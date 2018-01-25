@@ -1,77 +1,90 @@
 from . import sam, bam, bgzf
+import io
 
 class Writer:
-    def __init__(self):
-        raise NotImplementedError("Must use .sam(), .bam(), or .bgzf() constructors.")
+    def __init__(self, output, references=()):
+        self._output = output
+        self.references = references
 
     @staticmethod
     def sam(output, offset=0, sam_header=b'', references=()):
-        new = Writer.__new__(Writer)
-        new._output = output
-        new.references = references
         sam_header = sam.pack_header(sam_header, references)
-        if isinstance(input, 'RawIOBase'):
-            new.__call__ = Writer._sam_stream
+        if isinstance(output, (io.RawIOBase, io.BufferedIOBase)):
             output.write(sam_header)
+            return SAMStreamWriter(output, references)
         else:
-            new.__call__ = Writer._sam_buffer
             sam_len = len(sam_header)
-            output[offset : offset + sam_len] = sam_header
-            new.offset = offset + sam_len
-        return new
+            output[offset: offset + sam_len] = sam_header
+            return SAMBufferWriter(output, offset + sam_len, references)
 
     @staticmethod
     def bam(output, offset=0, sam_header=b'', references=()):
-        new = Writer.__new__(Writer)
-        new._output = output
-        new.references = references
-        if isinstance(sam_header, dict):
-            sam_header = sam.pack_header(sam_header, references)
-        if isinstance(input, 'RawIOBase'):
-            new.__call__ = Writer._bam_stream
+        sam_header = sam.pack_header(sam_header, references)
+        if isinstance(output, (io.RawIOBase, io.BufferedIOBase)):
             bam.header_to_stream(output, sam_header, references)
+            return BAMStreamWriter(output, references)
         else:
-            new.__call__ = Writer._bam_buffer
-            new.offset = bam.header_to_buffer(output, offset, sam_header, references)
-        return new
+            return BAMBufferWriter(output, bam.header_to_buffer(output, offset, sam_header, references), references)
 
     @staticmethod
     def bgzf(output, offset=0, sam_header=b'', references=()):
-        new = Writer.__new__(Writer)
-        new._output = bgzf.Writer(output, offset)
-        new.__call__ = Writer._bgzf
-        new.references = references
-        new._output(bam.pack_header(sam_header, references))
-        return new
+        writer = BGZFWriter(output, offset, references)
+        writer._output(bam.pack_header(sam_header, references))
+        writer._output.finish_block()
+        return writer
 
-    def _sam_stream(self, record):
-        self._output.writeline(bytes(record))
+    def __call__(self, *args, **kwargs):
+        raise NotImplementedError()
 
-    def _sam_buffer(self, record):
-        r = bytes(record)
+
+class StreamWriter(Writer):
+    def __init__(self, output, references):
+        super().__init__(output, references)
+
+
+class BufferWriter(Writer):
+    def __init__(self, output, offset=0, references=()):
+        super().__init__(output, references)
+        self.offset = offset
+
+
+class SAMStreamWriter(Writer):
+    def __call__(self, record):
+        self._output.writelines((bytes(record), b'\n'))
+
+
+class SAMBufferWriter(BufferWriter):
+    def __call__(self, record):
+        r = bytes(record) + b'\n'
         l = len(r)
         self._output[self.offset:self.offset + l] = r
         self.offset += l
 
-    def _bam_stream(self, record):
+
+class BAMStreamWriter(StreamWriter):
+    def __call__(self, record):
         record.to_stream(self._output)
 
-    def _bam_buffer(self, record):
+
+class BAMBufferWriter(BufferWriter):
+    def __call__(self, record):
         record.to_buffer(self._output, self.offset)
         self.offset += len(record)
 
-    def _bgzf(self, record):
+
+class BGZFWriter(Writer):
+    def __init__(self, output, offset=0, references=()):
+        super().__init__(bgzf.Writer(output, offset), references)
+
+    def __call__(self, record):
         record.pack()
-        if self._output.block_remaining() < len(record):
+        record_len = len(record)
+        if record_len < bgzf.MAX_CDATA_SIZE and self._output.block_remaining() < record_len:
             self._output.finish_block()
         self._output(record._header)
         self._output(record.name)
-        self._output(record.cigar)
-        self._output(record.sequence)
+        self._output(record.cigar.buffer)
+        self._output(record.sequence.buffer)
         self._output(record.quality_scores)
         for tag in record.tags.values():
-            self._output(tag._header)
-            self._output(tag._buffer)
-
-    def __call__(self, *args, **kwargs):
-        raise NotImplementedError()
+            self._output(tag.pack())

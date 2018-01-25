@@ -1,18 +1,18 @@
 import ctypes as C
-from . import OP_CODES
 
+OP_CODES = tuple(b"MIDNSHP=X"[i:i+1] for i in range(9))
 
 class PackedCIGAR:
-    __slots__ = "_buffer"
+    __slots__ = "buffer"
 
     def __init__(self, buffer: memoryview):
         self.buffer = buffer or bytearray()
 
     def __repr__(self):
-        return "".join("{}{}".format(c[0], OP_CODES[c[1]]) for c in self)
+        return "".join("{}{}".format(c[0], OP_CODES[c[1]].decode('ASCII')) for c in self)
 
     def __bytes__(self):
-        return b"".join(c[0] + OP_CODES[c[1]] for c in self)
+        return b"".join(str(c[0]).encode('ASCII') + OP_CODES[c[1]] for c in self)
 
     def __getitem__(self, i):
         if isinstance(i, slice):

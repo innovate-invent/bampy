@@ -1,4 +1,4 @@
-from . import SEQUENCE_VALUES
+SEQUENCE_VALUES = tuple(b"=ACMGRSVTWYHKDBN"[i:i+1] for i in range(9))
 
 
 class PackedSequence:

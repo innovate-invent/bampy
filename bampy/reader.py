@@ -1,63 +1,71 @@
 from . import bgzf, bam, sam
+import io
 
 def discoverStream(stream):
     peek = bytearray(4)
     stream.readinto(peek)
-    if bgzf.isBGZF(peek):
+    if bgzf.is_bgzf(peek):
         return bgzf.Block.from_stream(stream, peek)
-    elif bam.isBAM(peek):
+    elif bam.is_bam(peek):
         return bam.header_from_stream(stream, peek)
     else:
         #SAM
         return sam.header_from_stream(stream, peek)
 
-class Reader:
-    def __init__(self, input, offset:int = 0):
-        self._input = input
-        if isinstance(input, 'RawIOBase'):
-            # Stream
-            peek = bytearray(4)
-            input.readinto(peek)
-            if bgzf.isBGZF(peek):
-                self._bgzfReader = bgzf.Reader(input, peek=peek)
-                while True:
-                    try:
-                        self.header, self.references, offset = bam.header_from_buffer(next(self._bgzfReader))
-                    except bam.BufferUnderflow:
-                        continue
-                    self._bgzfOffset = offset
-                    self._bgzfReader.remaining -= offset
-                    break
-                self.__next__ = self._BGZF
-            elif bam.isBAM(peek):
-                self.header, self.references, _ = bam.header_from_stream(input, peek)
-                self.__next__ = self._BAM_stream
-            else:
-                # SAM
-                self.header, self.references, _ = sam.header_from_stream(input, peek)
-                self.__next__ = self._SAM_stream
-        else:
-            if bgzf.isBGZF(input, offset):
-                self._bgzfReader = bgzf.Reader(input, offset)
-                while True:
-                    try:
-                        self.header, self.references, offset = bam.header_from_buffer(next(self._bgzfReader))
-                    except bam.BufferUnderflow:
-                        continue
-                    self._bgzfOffset = offset
-                    self._bgzfReader.remaining -= offset
-                    break
-                self.offset = self._bgzfReader.offset
-                self.__next__ = self._BGZF
-            elif bam.isBAM(input, offset):
-                self.header, self.references, self.offset = bam.header_from_buffer(input, offset)
-                self.__next__ = self._BAM_buffer
-            else:
-                # SAM
-                self.header, self.references, self.offset = sam.header_from_buffer(input, offset)
-                self.__next__ = self._SAM_buffer
 
-    def _BGZF(self):
+def Reader(input, offset=0):
+    if isinstance(input, (io.RawIOBase, io.BufferedIOBase)):
+        # Stream
+        peek = bytearray(4)
+        input.readinto(peek)
+        if bgzf.is_bgzf(peek):
+            return BGZFReader(input, offset, peek)
+        elif bam.is_bam(peek):
+            return BAMStreamReader(input, peek)
+        else:
+            # SAM
+            return SAMStreamReader(input, peek)
+    else:
+        if bgzf.is_bgzf(input, offset):
+            return BGZFReader(input, offset)
+        elif bam.is_bam(input, offset):
+            return BAMBufferReader(input, offset)
+        else:
+            # SAM
+            return SAMBufferReader(input, offset)
+
+class _Reader:
+    def __init__(self, input):
+        self._input = input
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        raise NotImplementedError()
+
+class StreamReader(_Reader):
+    def __init__(self, input):
+        super().__init__(input)
+
+class BufferReader(_Reader):
+    def __init__(self, input, offset=0):
+        super().__init__(input)
+        self.offset = offset
+
+class BGZFReader(BufferReader):
+    def __init__(self, input, offset=0, peek=None):
+        self._bgzfReader = bgzf.Reader(input, offset, peek)
+        while True:
+            try:
+                self.header, self.references, offset = bam.header_from_buffer(next(self._bgzfReader))
+            except bam.util.BufferUnderflow:
+                continue
+            self._bgzfOffset = offset
+            self._bgzfReader.remaining -= offset
+            break
+
+    def __next__(self):
         while True:
             try:
                 record = bam.Record.from_buffer(self._bgzfReader.buffer, self._bgzfOffset, self.references)
@@ -65,29 +73,43 @@ class Reader:
                 self._bgzfOffset += record_len
                 self._bgzfReader.remaining -= record_len
                 return record
-            except bam.BufferUnderflow:
+            except bam.util.BufferUnderflow:
                 next(self._bgzfReader)
                 self._bgzfOffset = 0
 
-    def _BAM_stream(self):
+
+class BAMStreamReader(StreamReader):
+    def __init__(self, input, peek=None):
+        self.header, self.references, _ = bam.header_from_stream(input, peek)
+
+    def __next__(self):
         return bam.Record.from_stream(self._input, self.references)
 
-    def _SAM_stream(self):
+
+class SAMStreamReader(StreamReader):
+    def __init__(self, input, peek=None):
+        self.header, self.references, _ = sam.header_from_stream(input, peek)
+
+    def __next__(self):
         return bam.Record.from_sam(self._input.readline(), self.references)
 
-    def _BAM_buffer(self):
+
+class BAMBufferReader(BufferReader):
+    def __init__(self, input, offset=0):
+        self.header, self.references, self.offset = bam.header_from_buffer(input, offset)
+
+    def __next__(self):
         record = bam.Record.from_buffer(self._input, self.offset, self.references)
         self.offset = len(record)
         return record
 
-    def _SAM_buffer(self):
+
+class SAMBufferReader(BufferReader):
+    def __init__(self, input, offset=0):
+        self.header, self.references, self.offset = sam.header_from_buffer(input, offset)
+
+    def __next__(self):
         offset = self.offset
         end = self._input.find(b'\n', offset)
         self.offset = end + 1
         return bam.Record.from_sam(self._input[offset, end], self.references)
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        raise NotImplementedError()
