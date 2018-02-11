@@ -1,12 +1,13 @@
 from bampy.util import open_buffer
 from bampy import Reader, Writer, bam
+import gc
 
-if False:
+if True:
     stream_in = open("normal.bam", 'rb')
     stream_out = open("stream.bgzf.bam", 'wb')
     #stream_out_sam = open("stream.sam", 'wb')
     #buffer_in = open_buffer("normal.bam", 'r')
-    buffer_out = open_buffer("buffer.bgzf.bam", size=32 * 2 ** 20)
+    buffer_out = open_buffer("buffer.bgzf.bam", size=40 * 2 ** 20)
     #buffer_out_sam = open_buffer("buffer.sam", size=117 * 2 ** 20 * 8)
     offset = 0
 
@@ -27,15 +28,19 @@ if False:
     for record in stream_reader:
         c += 1
         stream_writer(record)
-        #buffer_writer(record)
+        buffer_writer(record)
         #stream_writer_sam(record)
         #buffer_writer_sam(record)
 
-    #buffer_out.resize(buffer_writer.offset)
+    buffer_writer.finalize()
+    size = buffer_writer.offset
+    del buffer_writer
+    gc.collect()
+    buffer_out.resize(size)
     #buffer_out_sam.resize(buffer_writer_sam.offset)
 
 else:
-    stream_in = open("stream.bgzf.bam", 'rb')
+    stream_in = open("buffer.bgzf.bam", 'rb')
 
     stream_reader = Reader(stream_in)
 

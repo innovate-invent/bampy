@@ -93,10 +93,22 @@ class BGZFWriter(Writer):
 
     @property
     def offset(self):
-        return self._output.offset
+        if self._output:
+            return self._output.offset
+        else:
+            return self._offset
 
     def finalize(self):
-        self._output(b'')  # Write empty block at end to mark EOF
+        if self._output:
+            self._output.finish_block()
+            offset = self._output.offset
+            output = self._output._output
+            if isinstance(output, (io.RawIOBase, io.BufferedIOBase)):
+                output.write(bgzf.EMPTY_BLOCK)
+            else:
+                output[offset:offset+bgzf.SIZEOF_EMPTY_BLOCK] = bgzf.EMPTY_BLOCK
+            self._offset = offset + bgzf.SIZEOF_EMPTY_BLOCK
+            self._output = None
 
     def __del__(self):
         self.finalize()

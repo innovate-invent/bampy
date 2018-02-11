@@ -1,6 +1,7 @@
 from . import bgzf, bam, sam
 import io
 
+
 def discoverStream(stream):
     peek = bytearray(4)
     stream.readinto(peek)
@@ -9,7 +10,7 @@ def discoverStream(stream):
     elif bam.is_bam(peek):
         return bam.header_from_stream(stream, peek)
     else:
-        #SAM
+        # SAM
         return sam.header_from_stream(stream, peek)
 
 
@@ -34,6 +35,7 @@ def Reader(input, offset=0):
             # SAM
             return SAMBufferReader(input, offset)
 
+
 class _Reader:
     def __init__(self, input):
         self._input = input
@@ -44,9 +46,11 @@ class _Reader:
     def __next__(self):
         raise NotImplementedError()
 
+
 class StreamReader(_Reader):
     def __init__(self, input):
         super().__init__(input)
+
 
 class BufferReader(_Reader):
     def __init__(self, input, offset=0):
@@ -56,6 +60,7 @@ class BufferReader(_Reader):
 
     def __len__(self):
         return self._buffer_len
+
 
 class BGZFReader(_Reader):
     def __init__(self, input, offset=0, peek=None):
