@@ -77,14 +77,26 @@ class BGZFWriter(Writer):
         super().__init__(bgzf.Writer(output, offset), references)
 
     def __call__(self, record):
-        record.pack()
+        data = record.pack()
         record_len = len(record)
         if record_len < bgzf.MAX_CDATA_SIZE and self._output.block_remaining() < record_len:
             self._output.finish_block()
-        self._output(record._header)
-        self._output(record.name)
-        self._output(record.cigar.buffer)
-        self._output(record.sequence.buffer)
-        self._output(record.quality_scores)
-        for tag in record.tags.values():
-            self._output(tag.pack())
+        it = iter(data)
+        cur = next(it)
+        try:
+            while True:
+                nxt = next(it)
+                self._output(cur)
+                cur = nxt
+        except StopIteration:
+            self._output(cur, boundary=True)
+
+    @property
+    def offset(self):
+        return self._output.offset
+
+    def finalize(self):
+        self._output(b'')  # Write empty block at end to mark EOF
+
+    def __del__(self):
+        self.finalize()

@@ -52,9 +52,15 @@ class BufferReader(_Reader):
     def __init__(self, input, offset=0):
         super().__init__(input)
         self.offset = offset
+        self._buffer_len = len(input)
 
-class BGZFReader(BufferReader):
+    def __len__(self):
+        return self._buffer_len
+
+class BGZFReader(_Reader):
     def __init__(self, input, offset=0, peek=None):
+        super().__init__(input)
+        self.offset = offset
         self._bgzfReader = bgzf.Reader(input, offset, peek)
         while True:
             try:
@@ -64,6 +70,7 @@ class BGZFReader(BufferReader):
             self._bgzfOffset = offset
             self._bgzfReader.remaining -= offset
             break
+        # TODO check for empty block at end of buffer to validate eof
 
     def __next__(self):
         while True:
@@ -75,41 +82,57 @@ class BGZFReader(BufferReader):
                 return record
             except bam.util.BufferUnderflow:
                 next(self._bgzfReader)
+                # TODO check for empty block at end of buffer to validate eof
                 self._bgzfOffset = 0
 
 
 class BAMStreamReader(StreamReader):
     def __init__(self, input, peek=None):
+        super().__init__(input)
         self.header, self.references, _ = bam.header_from_stream(input, peek)
 
     def __next__(self):
-        return bam.Record.from_stream(self._input, self.references)
+        try:
+            return bam.Record.from_stream(self._input, self.references)
+        except EOFError:
+            raise StopIteration()
 
 
 class SAMStreamReader(StreamReader):
     def __init__(self, input, peek=None):
+        super().__init__(input)
         self.header, self.references, _ = sam.header_from_stream(input, peek)
 
     def __next__(self):
-        return bam.Record.from_sam(self._input.readline(), self.references)
+        try:
+            return bam.Record.from_sam(self._input.readline(), self.references)
+        except EOFError:
+            raise StopIteration()
 
 
 class BAMBufferReader(BufferReader):
     def __init__(self, input, offset=0):
-        self.header, self.references, self.offset = bam.header_from_buffer(input, offset)
+        self.header, self.references, offset = bam.header_from_buffer(input, offset)
+        super().__init__(input, offset)
 
     def __next__(self):
-        record = bam.Record.from_buffer(self._input, self.offset, self.references)
-        self.offset = len(record)
-        return record
+        try:
+            record = bam.Record.from_buffer(self._input, self.offset, self.references)
+            self.offset = len(record)
+            return record
+        except bam.util.BufferUnderflow:
+            raise StopIteration()
 
 
 class SAMBufferReader(BufferReader):
     def __init__(self, input, offset=0):
-        self.header, self.references, self.offset = sam.header_from_buffer(input, offset)
+        self.header, self.references, offset = sam.header_from_buffer(input, offset)
+        super().__init__(input, offset)
 
     def __next__(self):
         offset = self.offset
-        end = self._input.find(b'\n', offset)
-        self.offset = end + 1
-        return bam.Record.from_sam(self._input[offset, end], self.references)
+        if offset < self._buffer_len:
+            end = self._input.find(b'\n', offset)
+            self.offset = end + 1
+            return bam.Record.from_sam(self._input[offset, end], self.references)
+        raise StopIteration()

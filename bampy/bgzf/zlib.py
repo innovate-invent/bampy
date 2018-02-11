@@ -101,7 +101,7 @@ class zState(C.Structure):
         ("reserved", C.c_ulong),
     ]
 
-def raw_compress(src=None, dest=None, mode=Z_FINISH, state=None, level=6, wbits=MAX_WBITS, memlevel=8, dictionary=None) -> (int, zState):
+def raw_compress(src=None, dest=None, mode=Z_FINISH, state=None, level=8, wbits=MAX_WBITS, memlevel=8, dictionary=None) -> (int, zState):
     if not state and (src is None or dest is None):
         raise ValueError("No initialised state. Provide src and dest on first call.")
 
@@ -109,7 +109,7 @@ def raw_compress(src=None, dest=None, mode=Z_FINISH, state=None, level=6, wbits=
         err = Z_OK
     else:
         state = zState()
-        err = Z_NULL
+        err = None
 
     if src:
         state.next_in = C.cast(C.pointer(src), C.POINTER(C.c_ubyte))
@@ -122,7 +122,7 @@ def raw_compress(src=None, dest=None, mode=Z_FINISH, state=None, level=6, wbits=
         state.next_out = C.cast(C.pointer(dest), C.POINTER(C.c_ubyte))
         state.avail_out = len(dest)
 
-    if err == Z_NULL:
+    if err is None:
         err = _zlib.deflateInit2_(C.byref(state), level, Z_DEFLATED, -wbits, memlevel, Z_DEFAULT_STRATEGY, ZLIB_VERSION, C.sizeof(zState))
         if err == Z_OK and dictionary:
             err = _zlib.deflateSetDictionary(C.byref(state), C.cast(C.c_char_p(dictionary), C.POINTER(C.c_ubyte)), len(dictionary))
@@ -131,7 +131,7 @@ def raw_compress(src=None, dest=None, mode=Z_FINISH, state=None, level=6, wbits=
         err = _zlib.deflate(C.byref(state), mode)
 
     if err == Z_STREAM_END:
-        _zlib.deflateEnd(C.byref(state))
+        assert _zlib.deflateEnd(C.byref(state)) == Z_OK
 
     return err, state
 

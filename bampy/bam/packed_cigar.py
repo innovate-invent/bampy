@@ -2,6 +2,7 @@ import ctypes as C
 
 OP_CODES = tuple(b"MIDNSHP=X"[i:i+1] for i in range(9))
 
+
 class PackedCIGAR:
     __slots__ = "buffer"
 

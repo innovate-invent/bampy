@@ -1,13 +1,17 @@
 import ctypes as C
 from enum import IntFlag
-from .packed_sequence import PackedSequence
-from .packed_cigar import PackedCIGAR
+from .packed_sequence import PackedSequence, SEQUENCE_VALUES
+from .packed_cigar import PackedCIGAR, OP_CODES
 from .tag import Tag
-from . import SEQUENCE_VALUES, OP_CODES, _qscore_to_str, _to_bytes, _to_str
+from .util import _qscore_to_str, _to_bytes, _to_str, BufferUnderflow
 from .. import sam
-#TODO ascii -> __bytes__, __str__ -> __repr__, refactor everything, generators -> iterators
 
-SIZEOF_INT32 = C.sizeof(C.c_uint32)
+SIZEOF_UINT32 = C.sizeof(C.c_uint32)
+
+SIZEOF_INT32 = C.sizeof(C.c_int32)
+
+CSTRING_TERMINATOR = (C.c_ubyte * 1)()
+
 
 class RecordFlags(IntFlag):
     MULTISEG                = 1 << 0    # template having multiple segments in sequencing
@@ -21,6 +25,7 @@ class RecordFlags(IntFlag):
     SECONDARY               = 1 << 8    # secondary alignment
     QCFAIL                  = 1 << 9    # not passing quality controls
     DUPLICATE               = 1 << 10   # PCR or optical duplicate
+
 
 class RecordHeader(C.LittleEndianStructure):
     _pack_ = 1
@@ -39,6 +44,13 @@ class RecordHeader(C.LittleEndianStructure):
         ("template_length", C.c_int32),    # tlen Template length (= TLEN) int32 t [0]
     ]
 
+    def __len__(self):
+        return SIZEOF_RECORDHEADER
+
+
+SIZEOF_RECORDHEADER = C.sizeof(RecordHeader)
+
+
 class Record:
     __slots__ = '_header', 'name', 'cigar', 'sequence', 'quality_scores', 'tags', 'reference', 'next_reference'
     def __init__(self, header = RecordHeader(), name = b"*", cigar = [], sequence = bytearray(), quality_scores = bytearray(), tags = bytearray(), references = None):
@@ -56,16 +68,16 @@ class Record:
     def _data_from_buffer(header, buffer, offset = 0):
         start = offset
         # Name
-        name = (C.c_char * header.name_length)
-        name.__repr__ = _to_bytes
-        name.__str__ = _to_str
+        name = (C.c_char * (header.name_length-1)) # Exclude Null
+        name.__bytes__ = _to_bytes
+        name.__repr__ = _to_str
         name = name.from_buffer(buffer, offset)
         offset += header.name_length
-        if not header.name_length % 4: offset += 4 - header.name_length % 4  # Handle extra nulls
+        #if not header.name_length % 4: offset += 4 - (header.name_length % 4)  # Handle extra nulls
         # Cigar
-        cigar = (C.c_uint32.__ctype_le__ * header.cigar_length).from_buffer(buffer, offset)
+        cigar = (C.c_uint32 * header.cigar_length).from_buffer(buffer, offset)
         cigar = PackedCIGAR(cigar)
-        offset += header.cigar_length * C.sizeof(C.c_uint32)
+        offset += header.cigar_length * SIZEOF_UINT32
         # Sequence
         array_len = (header.sequence_length + 1) // 2
         sequence = (C.c_ubyte * array_len).from_buffer(buffer, offset)
@@ -73,12 +85,12 @@ class Record:
         offset += array_len
         # Quality Scores
         quality_scores = (C.c_ubyte * header.sequence_length)
-        quality_scores.__str__ = _qscore_to_str
+        quality_scores.__repr__ = _qscore_to_str
         quality_scores = quality_scores.from_buffer(buffer, offset)
         offset += header.sequence_length
         # Tags
-        if offset < start + header.block_size - C.sizeof(RecordHeader):
-            tags = (C.c_ubyte * (header.block_size + C.sizeof(C.c_uint32) - offset + start - C.sizeof(RecordHeader))).from_buffer(buffer, offset)
+        if offset < start + header.block_size - SIZEOF_RECORDHEADER:
+            tags = (C.c_ubyte * (header.block_size + SIZEOF_UINT32 - offset + start - SIZEOF_RECORDHEADER)).from_buffer(buffer, offset)
         else:
             tags = {}
         return name, cigar, sequence, quality_scores, tags
@@ -86,9 +98,12 @@ class Record:
     @staticmethod
     def from_buffer(buffer, offset = 0, references = []):
         buffer = memoryview(buffer)
-        header = RecordHeader.from_buffer(buffer, offset)
-        offset += C.sizeof(RecordHeader)
-        return Record(header, *Record._data_from_buffer(header, buffer, offset), references)
+        try:
+            header = RecordHeader.from_buffer(buffer, offset)
+            offset += SIZEOF_RECORDHEADER
+            return Record(header, *Record._data_from_buffer(header, buffer, offset), references)
+        except ValueError:
+            raise BufferUnderflow()
 
     def to_buffer(self, buffer, offset):
         # TODO check if buffer large enough
@@ -96,36 +111,36 @@ class Record:
         self.pack()
         new = Record.__new__(Record)
         new._header = RecordHeader.from_buffer(buffer, offset)
-        C.memmove(new._header , self._header, C.sizeof(RecordHeader))
-        offset += C.sizeof(RecordHeader)
-        new.name, new.cigar, new.sequence, new.quality_scores, new.tags = Record._data_from_buffer(new._header, buffer, offset)
+        C.memmove(C.addressof(new._header), C.addressof(self._header), SIZEOF_RECORDHEADER)
+        offset += SIZEOF_RECORDHEADER
+        new.name, new.cigar, new.sequence, new.quality_scores, new_tags = Record._data_from_buffer(new._header, buffer, offset)
+        new.tags = new_tags
         #TODO reduce to one memmove of entire block if contiguous
-        C.memmove(new.name, self.name, len(self.name))
-        C.memmove(new.cigar, self.cigar, len(self.cigar))
-        C.memmove(new.sequence, self.sequence, len(self.sequence))
+        C.memmove(new.name, self.name, len(self.name)) # Buffer initialised to null so should leave terminating null
+        C.memmove(new.cigar.buffer, self.cigar.buffer, len(self.cigar.buffer))
+        C.memmove(new.sequence.buffer, self.sequence.buffer, len(self.sequence.buffer))
         C.memmove(new.quality_scores, self.quality_scores, len(self.quality_scores))
-        C.memmove(new.tags, self.tags, len(self.tags))
+        tags = super().__getattribute__('tags')
+        C.memmove(new_tags, tags, len(tags))
         new.reference = self.reference
         new.next_reference = self.next_reference
         return new
 
     @staticmethod
     def from_stream(stream, references = []):
-        header = bytearray(C.sizeof(RecordHeader))
-        stream.readinto(header)
+        header = bytearray(SIZEOF_RECORDHEADER)
+        if stream.readinto(header) != SIZEOF_RECORDHEADER:
+            raise EOFError()
         header = RecordHeader.from_buffer(header)
-        data = bytearray(header.block_size - C.sizeof(RecordHeader) + C.sizeof(C.c_int32))
-        stream.readinto(data)
+        data_len = header.block_size - SIZEOF_RECORDHEADER + SIZEOF_INT32
+        data = bytearray(data_len)
+        assert stream.readinto(data) == data_len
         return Record(header, *Record._data_from_buffer(header, data), references)
 
     def to_stream(self, stream):
-        self.pack()
-        stream.write(self._header)
-        stream.write(self.name)
-        stream.write(self.cigar)
-        stream.write(self.sequence)
-        stream.write(self.quality_scores)
-        stream.write(self.tags)
+        data = self.pack()
+        for datum in data:
+            stream.write(datum)
 
     def __getattribute__(self, item):
         attr = super().__getattribute__(item)
@@ -156,13 +171,22 @@ class Record:
                 raise
 
     def pack(self):
-        #TODO update header, pack tags?
+        #TODO update header
         self.sequence = PackedSequence.pack(self.sequence)
         self.cigar = PackedCIGAR.pack(self.cigar)
+        tags = super().__getattribute__('tags')
+        if isinstance(tags, dict):
+            tag_buffer = bytearray()
+            for tag in self.tags.values():
+                tag_buffer += tag.pack()
+            self.tags = tag_buffer
+            tags = tag_buffer
+        return [self._header, self.name, CSTRING_TERMINATOR, self.cigar.buffer, self.sequence.buffer, self.quality_scores, tags]
 
     def unpack(self):
         self.sequence = self.sequence.unpack()
         self.cigar = self.cigar.unpack()
+        # TODO tags?
 
     @staticmethod
     def from_sam(line, references):
@@ -198,17 +222,17 @@ class Record:
 
     def __repr__(self):
         return "{qname}\t{flag}\t{rname}\t{pos}\t{mapq}\t{cigar}\t{rnext}\t{pnext}\t{tlen}\t{seq}\t{qual}".format(
-            qname = repr(self.name),
-            flag = repr(self.flag),
-            rname = repr(self.reference.name),
-            pos = repr(self.position),
-            mapq = repr(self.mapping_quality),
+            qname = self.name,
+            flag = self.flag,
+            rname = self.reference.name,
+            pos = self.position,
+            mapq = self.mapping_quality,
             cigar = repr(self.cigar),
-            rnext = repr(self.next_reference.name),
-            pnext = repr(self.next_position),
-            tlen = repr(self.template_length),
+            rnext = self.next_reference.name,
+            pnext = self.next_position,
+            tlen = self.template_length,
             seq = repr(self.sequence),
-            qual = repr(self.quality_scores),
+            qual = self.quality_scores,
         ) + (('\t' + '\t'.join(repr(tag) for tag in self.tags.values())) if len(self.tags) else '')
 
     def __bytes__(self):
@@ -238,10 +262,14 @@ class Record:
         new.cigar = self.cigar.copy() if isinstance(self.cigar, PackedCIGAR) else bytearray(self.cigar)
         new.sequence = self.sequence.copy() if isinstance(self.sequence) else bytearray(self.sequence)
         new.quality_scores = bytearray(self.quality_scores)
-        new.tags = {}
-        for value in self.tags.values():
-            tag = value.copy()
-            new.tags[tag.tag] = tag
+        tags = super().__getattribute__('tags')
+        if isinstance(tags, dict):
+            new.tags = {}
+            for value in self.tags.values():
+                tag = value.copy()
+                new.tags[tag.tag] = tag
+        else:
+            new.tags = tags[:]
         new.reference = self.reference
         new.next_reference = self.next_reference
         return new

@@ -16,7 +16,9 @@ class TagHeader(C.LittleEndianStructure):
     def __len__(self):
         return SIZEOF_TAGHEADER
 
+
 SIZEOF_TAGHEADER = C.sizeof(TagHeader)
+
 
 class Tag:
     __slots__ = '_header', '_buffer'

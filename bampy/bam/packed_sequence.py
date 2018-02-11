@@ -13,7 +13,7 @@ class PackedSequence:
         self._length = length
 
     def __repr__(self):
-        return "".join(SEQUENCE_VALUES[c] for c in self)
+        return "".join(SEQUENCE_VALUES[c].decode('ASCII') for c in self)
 
     def __bytes__(self):
         return b"".join(SEQUENCE_VALUES[c] for c in self)

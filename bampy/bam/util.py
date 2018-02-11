@@ -2,23 +2,30 @@ import ctypes as C
 from ..reference import Reference
 from .. import sam
 
+SIZEOF_INT32 = C.sizeof(C.c_int32)
+
 MAGIC = b'BAM\x01'
 
 
-def is_bam(buffer, offset = 0):
-    return buffer[offset:offset+4] == MAGIC
+def is_bam(buffer, offset=0):
+    return buffer[offset:offset + 4] == MAGIC
+
 
 class InvalidBAM(ValueError):
     pass
 
+
 class BufferUnderflow(ValueError):
     pass
 
+
 def _qscore_to_str(data):
-    return ''.join(map(lambda x:chr(x+33), data))
+    return ''.join(map(lambda x: chr(x + 33), data))
+
 
 def _to_bytes(data):
     return data.value
+
 
 def _to_str(data):
     if isinstance(data.value, bytes):
@@ -26,7 +33,8 @@ def _to_str(data):
     else:
         return str(data.value)
 
-def header_from_stream(stream, _magic = None):
+
+def header_from_stream(stream, _magic=None):
     # Provide a friendly way of peeking into a stream for data type discovery
     if not _magic:
         magic = bytearray(4)
@@ -34,63 +42,65 @@ def header_from_stream(stream, _magic = None):
     if not is_bam(_magic or magic):
         raise InvalidBAM("Invalid BAM header found.")
 
-    header_length = bytearray(C.sizeof(C.c_int32))
-    stream.readinto(header_length)
-    header_length = C.c_int32.from_buffer(header_length)
+    header_length = bytearray(SIZEOF_INT32)
+    assert stream.readinto(header_length) == 4
+    header_length = int.from_bytes(header_length, byteorder='little', signed=True)  # C.c_int32.from_buffer(header_length)
 
     header = bytearray(header_length)
-    stream.readinto(header)
-    #header = (C.c_char * header_length).from_buffer(header)
+    assert stream.readinto(header) == header_length
+    # header = (C.c_char * header_length).from_buffer(header)
 
-    ref_count = bytearray(C.sizeof(C.c_int32))
+    ref_count = bytearray(SIZEOF_INT32)
     stream.readinto(ref_count)
-    ref_count = C.c_int32.from_buffer(ref_count)
+    ref_count = int.from_bytes(ref_count, byteorder='little', signed=True)  # C.c_int32.from_buffer(ref_count)
 
     # List of reference information (n=n ref )
     refs = []
     for _ in range(ref_count):
-        length = bytearray(C.sizeof(C.c_int32))
-        stream.readinto(length)
-        length = C.c_int32.from_buffer(length)  # l_name Length of the reference name plus 1 (including NUL) int32 t
-        name = bytearray(length)                     # name Reference sequence name; NUL-terminated char[l name]
+        length = bytearray(SIZEOF_INT32)
+        assert stream.readinto(length) == SIZEOF_INT32
+        length = int.from_bytes(length, byteorder='little', signed=True)  # C.c_int32.from_buffer(length)  # l_name Length of the reference name plus 1 (including NUL) int32 t
+        name = bytearray(length)  # name Reference sequence name; NUL-terminated char[l name]
         stream.readinto(name)
-        seq_length = bytearray(C.sizeof(C.c_int32))
+        seq_length = bytearray(SIZEOF_INT32)
         stream.readinto(seq_length)
-        seq_length = C.c_int32.from_buffer(seq_length)  # l_ref Length of the reference sequence int32 t
-        refs.append(Reference(name.decode('ASCII'), seq_length.value))
+        seq_length = int.from_bytes(seq_length, byteorder='little', signed=True)  # C.c_int32.from_buffer(seq_length)  # l_ref Length of the reference sequence int32 t
+        refs.append(Reference(name.decode('ASCII'), seq_length))
     return header, refs, 0
 
-def header_from_buffer(buffer, offset = 0):
+
+def header_from_buffer(buffer, offset=0):
     buffer_len = len(buffer)
-    magic = (C.c_char * 4).from_buffer(buffer, offset)             # magic BAM magic string char[4] BAM\1
+    magic = (C.c_char * 4).from_buffer(buffer, offset)  # magic BAM magic string char[4] BAM\1
     if magic.raw != MAGIC:
         raise InvalidBAM("Invalid BAM header found.")
     offset += 4
 
-    header_length = C.c_int32.from_buffer(buffer, offset).value          # l_text Length of the header text, including any NUL padding int32 t
+    header_length = C.c_int32.from_buffer(buffer, offset).value  # l_text Length of the header text, including any NUL padding int32 t
     if buffer_len < offset + header_length:
         raise BufferUnderflow()
-    offset += C.sizeof(C.c_int32)
+    offset += SIZEOF_INT32
 
-    header = (C.c_char * header_length).from_buffer(buffer, offset) # text Plain header text in SAM; not necessarily NUL-terminated char[l text]
+    header = (C.c_char * header_length).from_buffer(buffer, offset)  # text Plain header text in SAM; not necessarily NUL-terminated char[l text]
     offset += header_length
 
-    ref_count = C.c_int32.from_buffer(buffer, offset).value              # n_ref # reference sequences int32 t
-    offset += C.sizeof(C.c_int32)
+    ref_count = C.c_int32.from_buffer(buffer, offset).value  # n_ref # reference sequences int32 t
+    offset += SIZEOF_INT32
 
     # List of reference information (n=n ref )
     refs = []
     for _ in range(ref_count):
-        length = C.c_int32.from_buffer(buffer, offset).value         # l_name Length of the reference name plus 1 (including NUL) int32 t
+        length = C.c_int32.from_buffer(buffer, offset).value  # l_name Length of the reference name plus 1 (including NUL) int32 t
         if buffer_len < offset + length:
             raise BufferUnderflow()
         offset += C.sizeof(C.c_int32)
-        name = (C.c_char * length).from_buffer(buffer, offset) # name Reference sequence name; NUL-terminated char[l name]
+        name = (C.c_char * length).from_buffer(buffer, offset)  # name Reference sequence name; NUL-terminated char[l name]
         offset += length
-        seq_length = C.c_int32.from_buffer(buffer, offset)     # l_ref Length of the reference sequence int32 t
+        seq_length = C.c_int32.from_buffer(buffer, offset)  # l_ref Length of the reference sequence int32 t
         offset += C.sizeof(C.c_int32)
         refs.append(Reference(_to_str(name), seq_length.value))
     return header.raw, refs, offset
+
 
 def pack_header(sam_header=b'', references=()) -> bytearray:
     sam_header = sam.pack_header(sam_header, references)
@@ -103,12 +113,14 @@ def pack_header(sam_header=b'', references=()) -> bytearray:
         bam_header += ref.pack()
     return bam_header
 
+
 def header_to_stream(stream, sam_header=b'', references=()):
     stream.write(pack_header(sam_header, references))
     return 0
 
+
 def header_to_buffer(buffer, offset=0, sam_header=b'', references=()):
     header = pack_header(sam_header, references)
     end = offset + len(header)
-    buffer[offset : end] = header
+    buffer[offset: end] = header
     return end + 1

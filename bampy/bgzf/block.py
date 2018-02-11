@@ -2,6 +2,9 @@ import ctypes as C
 from .util import InvalidBGZF, MAX_BLOCK_SIZE
 from enum import IntFlag
 
+SIZEOF_UINT16 = C.sizeof(C.c_uint16)
+
+
 # Taken from gzip spec
 class BlockFlags(IntFlag):
     FTEXT       = 1 << 0
@@ -44,30 +47,20 @@ class SubField(C.LittleEndianStructure):
         ("SLEN", C.c_uint16) #   SLEN Subfield LENgth uint16 t 2
     ]
 
+SIZEOF_SUBFIELD = C.sizeof(SubField)
+
 class BSIZE(SubField):
     _pack_ = 1
     _fields_ = [
         ("value", C.c_uint16)
     ]
     def __init__(self):
-        self.SI1 = 66
-        self.SI2 = 67
-        self.SLEN = C.sizeof(C.c_uint16)
+        super().__init__(66, 67, SIZEOF_UINT16)
 
-class FixedXLENHeader(Header):
-    _pack_ = 1
-    _fields_ = [
-        ("BSIZE", BSIZE)
-    ]
-    def __init__(self):
-        self.id1 = 31
-        self.id2 = 139
-        self.compression_method = 8
-        self.flag = BlockFlags.FEXTRA
-        self.modification_time = 0
-        self.extra_flags = ExtraFlags.MAX_COMPRESSION
-        self.os = 255
-        self.extra_length = C.sizeof(BSIZE)
+
+SIZEOF_BSIZE = C.sizeof(BSIZE)
+
+FIXED_XLEN_HEADER = b'\x1f\x8b\x08\x04\x00\x00\x00\x00\x00\xff\x06\x00\x42\x43\x02\x00'
 
 class Trailer(C.LittleEndianStructure):
     _pack_ = 1
@@ -76,7 +69,10 @@ class Trailer(C.LittleEndianStructure):
         ("uncompressed_size", C.c_uint32)   # ISIZE Input SIZE (length of uncompressed data) uint32
     ]
 
-MAX_CDATA_SIZE = MAX_BLOCK_SIZE - C.sizeof(FixedXLENHeader) - C.sizeof(Trailer)
+
+SIZEOF_TRAILER = C.sizeof(Trailer)
+MAX_CDATA_SIZE = MAX_BLOCK_SIZE - len(FIXED_XLEN_HEADER) - 2 - C.sizeof(Trailer)
+
 
 class Block:
     __slots__ = '_header', '_trailer', 'extra_fields', 'size', 'flags'
@@ -116,12 +112,12 @@ class Block:
             raise InvalidBGZF("Invalid block header found: ID1: {} ID2: {}".format(header.id1, header.id2))
 
         # Parse extra fields
-        offset += C.sizeof(Header)
+        offset += SIZEOF_HEADER
         extra_fields = Block._parseExtra(buffer[offset : offset + header.extra_length])
 
         offset += header.extra_length
         block_size = Block._getSize(extra_fields)
-        trailer_start = start + block_size - C.sizeof(Trailer)
+        trailer_start = start + block_size - SIZEOF_TRAILER
         trailer = Trailer.from_buffer(buffer, trailer_start)
 
         return Block(header, extra_fields, trailer), buffer[offset : trailer_start]
@@ -164,9 +160,9 @@ class Block:
         fieldOffset = 0
         while fieldOffset < len(buffer):
             field = SubField.from_buffer(buffer, fieldOffset)
-            fieldStart = fieldOffset + C.sizeof(SubField)
+            fieldStart = fieldOffset + SIZEOF_SUBFIELD
             extraFields[bytes((field.SI1, field.SI2))] = buffer[fieldStart: fieldStart + field.SLEN]
-            fieldOffset += C.sizeof(SubField) + field.SLEN
+            fieldOffset += SIZEOF_SUBFIELD + field.SLEN
         return extraFields
 
     @staticmethod
@@ -174,7 +170,7 @@ class Block:
         # Load BGZF required BC field
         BC = extra_fields.get(b'BC')
         if BC:
-            size = C.c_uint16.from_buffer_copy(BC).value + 1  # type: int
+            size = int.from_bytes(BC, byteorder='little', signed=False) + 1  # type: int
             if size is not None:
                 return size
         raise InvalidBGZF("Missing block size field.")
