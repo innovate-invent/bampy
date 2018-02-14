@@ -1,10 +1,15 @@
-from . import zlib
-from .block import Block
 import ctypes as C
 import io
 
+from . import zlib
+from .block import Block
 
-def Reader(input, offset:int = 0, peek = None):
+
+class EmptyBlock(ValueError):
+    pass
+
+
+def Reader(input, offset: int = 0, peek=None):
     if isinstance(input, (io.RawIOBase, io.BufferedIOBase)):
         return StreamReader(input, peek)
     else:
@@ -60,10 +65,9 @@ class StreamReader(_Reader):
 
     def __next__(self):
         try:
-            while True:
-                block, cdata = Block.from_stream(self._input, self._peek)
-                if block.uncompressed_size: # Skip empty blocks
-                    break
+            block, cdata = Block.from_stream(self._input, self._peek)
+            if not block.uncompressed_size:
+                raise EmptyBlock()
             self._inflate(block, cdata)
             self._peek = None
             return self._data
@@ -81,6 +85,8 @@ class BufferReader(_Reader):
         while self.offset < self._len:
             block, cdata = Block.from_buffer(self._input, self.offset)
             self.offset += len(block)
-            if block.uncompressed_size: # Skip empty blocks
+            if block.uncompressed_size:
                 return self._inflate(block, cdata)
+            else:
+                raise EmptyBlock()
         raise StopIteration()

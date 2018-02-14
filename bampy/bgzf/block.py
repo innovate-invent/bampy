@@ -1,59 +1,66 @@
 import ctypes as C
-from .util import InvalidBGZF, MAX_BLOCK_SIZE
 from enum import IntFlag
+
+from .util import InvalidBGZF, MAX_BLOCK_SIZE
 
 SIZEOF_UINT16 = C.sizeof(C.c_uint16)
 
 
 # Taken from gzip spec
 class BlockFlags(IntFlag):
-    FTEXT       = 1 << 0
-    FHCRC       = 1 << 1
-    FEXTRA      = 1 << 2
-    FNAME       = 1 << 3
-    FCOMMENT    = 1 << 4
-    reserved1   = 1 << 5
-    reserved2   = 1 << 6
-    reserved3   = 1 << 7
+    FTEXT = 1 << 0
+    FHCRC = 1 << 1
+    FEXTRA = 1 << 2
+    FNAME = 1 << 3
+    FCOMMENT = 1 << 4
+    reserved1 = 1 << 5
+    reserved2 = 1 << 6
+    reserved3 = 1 << 7
+
 
 class ExtraFlags(IntFlag):
     MAX_COMPRESSION = 1 << 2
-    FASTEST         = 1 << 4
+    FASTEST = 1 << 4
 
-#TODO Add check for other block flags
+
+# TODO Add check for other block flags
 class Header(C.LittleEndianStructure):
     _pack_ = 1
     _fields_ = [
-        ("id1", C.c_uint8),    # ID1   gzip IDentifier1            uint8 31
-        ("id2", C.c_uint8),    # ID2   gzip IDentifier2            uint8 139
-        ("compression_method", C.c_uint8),     # CM    gzip Compression Method     uint8 8
-        ("flag", C.c_uint8),    # FLG   gzip FLaGs                  uint8 4
+        ("id1", C.c_uint8),  # ID1   gzip IDentifier1            uint8 31
+        ("id2", C.c_uint8),  # ID2   gzip IDentifier2            uint8 139
+        ("compression_method", C.c_uint8),  # CM    gzip Compression Method     uint8 8
+        ("flag", C.c_uint8),  # FLG   gzip FLaGs                  uint8 4
         ("modification_time", C.c_uint32),  # MTIME gzip Modification TIME      uint32
-        ("extra_flags", C.c_uint8),    # XFL   gzip eXtra FLags            uint8
-        ("os", C.c_uint8),     # OS    gzip Operating System       uint8
-        ("extra_length", C.c_uint16)   # XLEN  gzip eXtra LENgth           uint16
+        ("extra_flags", C.c_uint8),  # XFL   gzip eXtra FLags            uint8
+        ("os", C.c_uint8),  # OS    gzip Operating System       uint8
+        ("extra_length", C.c_uint16)  # XLEN  gzip eXtra LENgth           uint16
     ]
 
 
 SIZEOF_HEADER = C.sizeof(Header)
+
 
 # Extra subfield(s) (total size=XLEN)
 #   Additional RFC1952 extra subfields if present
 class SubField(C.LittleEndianStructure):
     _pack_ = 1
     _fields_ = [
-        ("SI1", C.c_uint8), #   SI1 Subfield Identifier1        uint8 66
-        ("SI2", C.c_uint8), #   SI2 Subfield Identifier2        uint8 67
-        ("SLEN", C.c_uint16) #   SLEN Subfield LENgth uint16 t 2
+        ("SI1", C.c_uint8),  # SI1 Subfield Identifier1        uint8 66
+        ("SI2", C.c_uint8),  # SI2 Subfield Identifier2        uint8 67
+        ("SLEN", C.c_uint16)  # SLEN Subfield LENgth uint16 t 2
     ]
 
+
 SIZEOF_SUBFIELD = C.sizeof(SubField)
+
 
 class BSIZE(SubField):
     _pack_ = 1
     _fields_ = [
         ("value", C.c_uint16)
     ]
+
     def __init__(self):
         super().__init__(66, 67, SIZEOF_UINT16)
 
@@ -62,11 +69,12 @@ SIZEOF_BSIZE = C.sizeof(BSIZE)
 
 FIXED_XLEN_HEADER = b'\x1f\x8b\x08\x04\x00\x00\x00\x00\x00\xff\x06\x00\x42\x43\x02\x00'
 
+
 class Trailer(C.LittleEndianStructure):
     _pack_ = 1
     _fields_ = [
-        ("CRC32", C.c_uint32),              # CRC32 CRC-32                      uint32
-        ("uncompressed_size", C.c_uint32)   # ISIZE Input SIZE (length of uncompressed data) uint32
+        ("CRC32", C.c_uint32),  # CRC32 CRC-32                      uint32
+        ("uncompressed_size", C.c_uint32)  # ISIZE Input SIZE (length of uncompressed data) uint32
     ]
 
 
@@ -85,7 +93,7 @@ class Block:
         self._trailer = trailer
 
     def __getattr__(self, item):
-        #TODO @properties might be faster
+        # TODO @properties might be faster
         if item not in ('_header', '_trailer'):
             try:
                 return getattr(self._header, item)
@@ -104,7 +112,7 @@ class Block:
         return self.size
 
     @staticmethod
-    def from_buffer(buffer, offset = 0) -> ('Block', memoryview):
+    def from_buffer(buffer, offset=0) -> ('Block', memoryview):
         start = offset
         buffer = memoryview(buffer)
         header = Header.from_buffer(buffer, offset)
@@ -113,17 +121,17 @@ class Block:
 
         # Parse extra fields
         offset += SIZEOF_HEADER
-        extra_fields = Block._parseExtra(buffer[offset : offset + header.extra_length])
+        extra_fields = Block._parseExtra(buffer[offset: offset + header.extra_length])
 
         offset += header.extra_length
         block_size = Block._getSize(extra_fields)
         trailer_start = start + block_size - SIZEOF_TRAILER
         trailer = Trailer.from_buffer(buffer, trailer_start)
 
-        return Block(header, extra_fields, trailer), buffer[offset : trailer_start]
+        return Block(header, extra_fields, trailer), buffer[offset: trailer_start]
 
     @staticmethod
-    def from_stream(stream, _magic = None) -> ('Block', memoryview):
+    def from_stream(stream, _magic=None) -> ('Block', memoryview):
         # Provide a friendly way of peeking into a stream for data type discovery
         if _magic:
             header_buffer = bytearray(SIZEOF_HEADER - len(_magic))

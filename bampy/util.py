@@ -1,4 +1,6 @@
-import os, stat, mmap
+import mmap
+import os
+import stat
 
 
 def open_buffer(path, mode=os.O_RDWR | os.O_CREAT, size=0):

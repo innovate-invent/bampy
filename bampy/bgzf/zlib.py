@@ -1,6 +1,6 @@
 import ctypes as C
-from ctypes import util
 import platform
+from ctypes import util
 
 # Special thanks to Mark Nottingham https://gist.github.com/mnot/242459
 # and the zlib example source for reference implementations.
@@ -46,14 +46,13 @@ Z_DEFAULT_STRATEGY = 0
 # Possible values of the data_type field for deflate()
 Z_BINARY = 0
 Z_TEXT = 1
-Z_ASCII = Z_TEXT   # for compatibility with 1.2.2 and earlier
+Z_ASCII = Z_TEXT  # for compatibility with 1.2.2 and earlier
 Z_UNKNOWN = 2
 
 # The deflate compression method (the only one supported in this version)
 Z_DEFLATED = 8
 
-
-Z_NULL = 0  #  for initializing zalloc, zfree, opaque
+Z_NULL = 0  # for initializing zalloc, zfree, opaque
 
 NULL_PTR = C.cast(0, C.POINTER(C.c_ubyte))
 
@@ -61,10 +60,12 @@ if platform.system() == 'Windows':
     path = util.find_library("zlib1.dll")
     if not path:
         import os
+
         path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'zlibwapi.dll')
     _zlib = C.windll.LoadLibrary(path)
 else:
     _zlib = C.cdll.LoadLibrary(util.find_library("z"))
+
 
 class zState(C.Structure):
     """
@@ -101,6 +102,7 @@ class zState(C.Structure):
         ("reserved", C.c_ulong),
     ]
 
+
 def raw_compress(src=None, dest=None, mode=Z_FINISH, state=None, level=8, wbits=MAX_WBITS, memlevel=8, dictionary=None) -> (int, zState):
     if not state and (src is None or dest is None):
         raise ValueError("No initialised state. Provide src and dest on first call.")
@@ -134,6 +136,7 @@ def raw_compress(src=None, dest=None, mode=Z_FINISH, state=None, level=8, wbits=
         assert _zlib.deflateEnd(C.byref(state)) == Z_OK
 
     return err, state
+
 
 def raw_decompress(src=None, dest=None, mode=Z_FINISH, state=None, wbits=MAX_WBITS, dictionary=None) -> (int, zState):
     if not state and (src is None or dest is None):
@@ -169,6 +172,7 @@ def raw_decompress(src=None, dest=None, mode=Z_FINISH, state=None, wbits=MAX_WBI
         _zlib.inflateEnd(C.byref(state))
 
     return err, state
+
 
 def crc32(src):
     return _zlib.crc32(_zlib.crc32(0, Z_NULL, 0), src, len(src))

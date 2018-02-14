@@ -1,19 +1,30 @@
 import ctypes as C
 
+
 class Reference:
-    __slots__ = 'name', 'length'
-    def __init__(self, name: str, length: int):
-        self.name = name #type: str
-        self.length = length #type: int
-        #TODO allow additional SAM attributes
+    __slots__ = 'name', 'length', 'index', '_optional'
+
+    def __init__(self, name: str, length: int, index: int = 0, optional={}):
+        self.name = name
+        self.length = length
+        self.index = index
+        self._optional = optional
 
     def __repr__(self):
-        return "@SQ SN:{} LN:{}".format(self.name, self.length)
+        rep = "@SQ SN:{} LN:{}".format(self.name, self.length)
+        if len(self._optional):
+            for k, v in self._optional.items():
+                rep += " {}: {}".format(k, v)
+        return rep
 
     def __bytes__(self):
-        return b'@SQ\tSN:' + self.name.encode('ASCII') + b'\tLN:' + str(self.length).encode('ASCII') + b'\n'
+        b = b'@SQ\tSN:' + self.name.encode('ASCII') + b'\tLN:' + str(self.length).encode('ASCII')
+        if len(self._optional):
+            for k, v in self._optional.items():
+                b += b'\t' + k + b':' + v
+        return b + b'\n'
 
     def pack(self):
         return ((len(self.name) + 1).to_bytes(C.sizeof(C.c_int32), 'little', signed=True)
-               + self.name.encode('ascii') + b'\00'
-               + self.length.to_bytes(C.sizeof(C.c_int32), 'little', signed=True))
+                + self.name.encode('ascii') + b'\00'
+                + self.length.to_bytes(C.sizeof(C.c_int32), 'little', signed=True))

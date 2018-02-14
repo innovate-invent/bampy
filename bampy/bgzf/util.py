@@ -10,8 +10,10 @@ EMPTY_BLOCK = b'\x1f\x8b\x08\x04\x00\x00\x00\x00\x00\xff\x06\x00\x42\x43\x02\x00
 
 SIZEOF_EMPTY_BLOCK = len(EMPTY_BLOCK)
 
-def is_bgzf(buffer, offset = 0):
-    return buffer[offset:offset+2] == MAGIC
+
+def is_bgzf(buffer, offset=0):
+    return buffer[offset:offset + 2] == MAGIC
+
 
 class InvalidBGZF(ValueError):
     pass

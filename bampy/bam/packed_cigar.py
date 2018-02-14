@@ -1,6 +1,6 @@
 import ctypes as C
 
-OP_CODES = tuple(b"MIDNSHP=X"[i:i+1] for i in range(9))
+from .util import OP_CODES
 
 
 class PackedCIGAR:
@@ -9,10 +9,19 @@ class PackedCIGAR:
     def __init__(self, buffer: memoryview):
         self.buffer = buffer or bytearray()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        """
+        Returns a string representation of the record data.
+        For debugging use only, see __bytes__ to convert to SAM.
+        :return: String representing cigar.
+        """
         return "".join("{}{}".format(c[0], OP_CODES[c[1]].decode('ASCII')) for c in self)
 
-    def __bytes__(self):
+    def __bytes__(self) -> bytes:
+        """
+        Converts record to SAM format.
+        :return: A bytes object representing cigar data in SAM format
+        """
         return b"".join(str(c[0]).encode('ASCII') + OP_CODES[c[1]] for c in self)
 
     def __getitem__(self, i):
@@ -39,11 +48,21 @@ class PackedCIGAR:
         else:
             self.buffer[i] = value[0] << 4 | value[1]
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """
+        The number of bytes in the buffer correlate to the number of cigar operations.
+        :return: The number of bytes in the buffer
+        """
         return len(self.buffer)
 
     @staticmethod
     def pack(from_buffer, to_buffer=None):
+        """
+
+        :param from_buffer:
+        :param to_buffer:
+        :return:
+        """
         if isinstance(from_buffer, PackedCIGAR):
             # TODO memcpy to toBuffer
             return from_buffer

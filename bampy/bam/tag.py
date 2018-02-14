@@ -1,5 +1,8 @@
 import ctypes as C
+
 from .util import InvalidBAM, _to_str
+
+SIZEOF_UINT32 = C.sizeof(C.c_uint32)
 
 BTAG_TYPES = {b'c': C.c_int8, b'C': C.c_uint8, b's': C.c_int16, b'S': C.c_uint16, b'i': C.c_int32, b'I': C.c_uint32, b'f': C.c_float}
 TAG_TYPES = {b'A': C.c_char}
@@ -50,8 +53,8 @@ class Tag:
         if self._buffer is not None:
             length = C.sizeof(TagHeader)
             if self._header.value_type == b'B':
-                # TODO make sure this is right
-                length += C.sizeof(C.c_uint32) + (len(self._buffer))
+                # TODO make sure this is right, need data that uses B
+                length += SIZEOF_UINT32 + (len(self._buffer))
             elif self._header.value_type in b'HZ':
                 length += len(self._buffer)
             else:
@@ -84,7 +87,7 @@ class Tag:
 
     def __bytes__(self):
         if self._header.value_type in b'ZH':
-            value = self._buffer[:-1] # Omit the trailing Null
+            value = self._buffer[:-1]  # Omit the trailing Null
         elif self._header.value_type in b'AB':
             value = self._buffer
         else:

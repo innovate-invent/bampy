@@ -1,5 +1,7 @@
-from . import sam, bam, bgzf
 import io
+
+from . import bam, bgzf, sam
+
 
 class Writer:
     def __init__(self, output, references=()):
@@ -106,7 +108,7 @@ class BGZFWriter(Writer):
             if isinstance(output, (io.RawIOBase, io.BufferedIOBase)):
                 output.write(bgzf.EMPTY_BLOCK)
             else:
-                output[offset:offset+bgzf.SIZEOF_EMPTY_BLOCK] = bgzf.EMPTY_BLOCK
+                output[offset:offset + bgzf.SIZEOF_EMPTY_BLOCK] = bgzf.EMPTY_BLOCK
             self._offset = offset + bgzf.SIZEOF_EMPTY_BLOCK
             self._output = None
 

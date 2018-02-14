@@ -1,10 +1,38 @@
 import ctypes as C
-from ..reference import Reference
+
 from .. import sam
+from ..reference import Reference
 
 SIZEOF_INT32 = C.sizeof(C.c_int32)
 
 MAGIC = b'BAM\x01'
+
+OP_CODES = tuple(b"MIDNSHP=X"[i:i + 1] for i in range(9))
+SEQUENCE_VALUES = tuple(b"=ACMGRSVTWYHKDBN"[i:i + 1] for i in range(9))
+
+CONSUMES_QUERY = [
+    True,  # M
+    True,  # I
+    False,  # D
+    False,  # N
+    True,  # S
+    False,  # H
+    False,  # P
+    True,  # =
+    True,  # X
+]
+
+CONSUMES_REFERENCE = [
+    True,  # M
+    False,  # I
+    True,  # D
+    True,  # N
+    False,  # S
+    False,  # H
+    False,  # P
+    True,  # =
+    True,  # X
+]
 
 
 def is_bam(buffer, offset=0):
@@ -56,16 +84,18 @@ def header_from_stream(stream, _magic=None):
 
     # List of reference information (n=n ref )
     refs = []
-    for _ in range(ref_count):
+    for i in range(ref_count):
         length = bytearray(SIZEOF_INT32)
         assert stream.readinto(length) == SIZEOF_INT32
-        length = int.from_bytes(length, byteorder='little', signed=True)  # C.c_int32.from_buffer(length)  # l_name Length of the reference name plus 1 (including NUL) int32 t
+        length = int.from_bytes(length, byteorder='little',
+                                signed=True)  # C.c_int32.from_buffer(length)  # l_name Length of the reference name plus 1 (including NUL) int32 t
         name = bytearray(length)  # name Reference sequence name; NUL-terminated char[l name]
         stream.readinto(name)
         seq_length = bytearray(SIZEOF_INT32)
         stream.readinto(seq_length)
-        seq_length = int.from_bytes(seq_length, byteorder='little', signed=True)  # C.c_int32.from_buffer(seq_length)  # l_ref Length of the reference sequence int32 t
-        refs.append(Reference(name.decode('ASCII'), seq_length))
+        seq_length = int.from_bytes(seq_length, byteorder='little',
+                                    signed=True)  # C.c_int32.from_buffer(seq_length)  # l_ref Length of the reference sequence int32 t
+        refs.append(Reference(name.decode('ASCII'), seq_length), i)
     return header, refs, 0
 
 
@@ -89,7 +119,7 @@ def header_from_buffer(buffer, offset=0):
 
     # List of reference information (n=n ref )
     refs = []
-    for _ in range(ref_count):
+    for i in range(ref_count):
         length = C.c_int32.from_buffer(buffer, offset).value  # l_name Length of the reference name plus 1 (including NUL) int32 t
         if buffer_len < offset + length:
             raise BufferUnderflow()
@@ -98,7 +128,7 @@ def header_from_buffer(buffer, offset=0):
         offset += length
         seq_length = C.c_int32.from_buffer(buffer, offset)  # l_ref Length of the reference sequence int32 t
         offset += C.sizeof(C.c_int32)
-        refs.append(Reference(_to_str(name), seq_length.value))
+        refs.append(Reference(_to_str(name), seq_length.value), i)
     return header.raw, refs, offset
 
 
@@ -124,3 +154,49 @@ def header_to_buffer(buffer, offset=0, sam_header=b'', references=()):
     end = offset + len(header)
     buffer[offset: end] = header
     return end + 1
+
+
+def alignment_length(cigar):
+    total = 0
+    for count, op in cigar:
+        if CONSUMES_REFERENCE[op]:
+            total += count
+    return total
+
+
+def reg2bin(beg, end):
+    """
+    Calculate bin given an alignment covering [beg,end) (zero-based, half-closed-half-open)
+    Adapted directly from SAM spec.
+    :param beg:
+    :param end:
+    :return:
+    """
+    end -= 1
+    if (beg >> 14 == end >> 14): return ((1 << 15) - 1) // 7 + (beg >> 14)
+    if (beg >> 17 == end >> 17): return ((1 << 12) - 1) // 7 + (beg >> 17)
+    if (beg >> 20 == end >> 20): return ((1 << 9) - 1) // 7 + (beg >> 20)
+    if (beg >> 23 == end >> 23): return ((1 << 6) - 1) // 7 + (beg >> 23)
+    if (beg >> 26 == end >> 26): return ((1 << 3) - 1) // 7 + (beg >> 26)
+    return 0
+
+
+MAX_BIN = (((1 << 18) - 1) / 7)
+
+
+def reg2bins(beg, end):
+    """
+    Calculate the list of bins that may overlap with region [beg,end) (zero-based)
+    Adapted directly from SAM spec.
+    :param beg:
+    :param end:
+    :return:
+    """
+    end -= 1
+    bins = [0]
+    for k in range(1 + (beg >> 26), 2 + (end >> 26)): bins.append(k)
+    for k in range(9 + (beg >> 23), 10 + (end >> 23)): bins.append(k)
+    for k in range(73 + (beg >> 20), 74 + (end >> 20)): bins.append(k)
+    for k in range(585 + (beg >> 17), 586 + (end >> 17)): bins.append(k)
+    for k in range(4681 + (beg >> 14), 4682 + (end >> 14)): bins.append(k)
+    return bins

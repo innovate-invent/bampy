@@ -1,5 +1,11 @@
-from . import bgzf, bam, sam
 import io
+import warnings
+
+from . import bam, bgzf, sam
+
+
+class TruncatedFileWarning(UserWarning):
+    pass
 
 
 def discoverStream(stream):
@@ -63,10 +69,12 @@ class BufferReader(_Reader):
 
 
 class BGZFReader(_Reader):
-    def __init__(self, input, offset=0, peek=None):
-        super().__init__(input)
+    def __init__(self, source, offset=0, peek=None):
+        if not isinstance(source, (io.RawIOBase, io.BufferedIOBase)) and source[-bgzf.SIZEOF_EMPTY_BLOCK:] != bgzf.EMPTY_BLOCK:
+            warnings.warn("Missing EOF marker, data is possibly truncated.", TruncatedFileWarning)
+        super().__init__(source)
         self.offset = offset
-        self._bgzfReader = bgzf.Reader(input, offset, peek)
+        self._bgzfReader = bgzf.Reader(source, offset, peek)
         while True:
             try:
                 self.header, self.references, offset = bam.header_from_buffer(next(self._bgzfReader))
@@ -75,9 +83,9 @@ class BGZFReader(_Reader):
             self._bgzfOffset = offset
             self._bgzfReader.remaining -= offset
             break
-        # TODO check for empty block at end of buffer to validate eof
 
     def __next__(self):
+        empty = False
         while True:
             try:
                 record = bam.Record.from_buffer(self._bgzfReader.buffer, self._bgzfOffset, self.references)
@@ -86,8 +94,15 @@ class BGZFReader(_Reader):
                 self._bgzfReader.remaining -= record_len
                 return record
             except bam.util.BufferUnderflow:
-                next(self._bgzfReader)
-                # TODO check for empty block at end of buffer to validate eof
+                try:
+                    next(self._bgzfReader)
+                    empty = False
+                except bgzf.EmptyBlock:
+                    empty = True
+                except StopIteration:
+                    if empty:
+                        warnings.warn("Missing EOF marker, data is possibly truncated.", TruncatedFileWarning)
+                    raise
                 self._bgzfOffset = 0
 
 

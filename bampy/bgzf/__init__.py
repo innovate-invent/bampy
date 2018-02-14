@@ -1,4 +1,4 @@
-from .reader import Reader
-from .writer import Writer
 from .block import Block, MAX_CDATA_SIZE
-from .util import MAX_BLOCK_SIZE, is_bgzf, EMPTY_BLOCK, SIZEOF_EMPTY_BLOCK
+from .reader import EmptyBlock, Reader
+from .util import EMPTY_BLOCK, MAX_BLOCK_SIZE, SIZEOF_EMPTY_BLOCK, is_bgzf
+from .writer import Writer
