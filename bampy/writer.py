@@ -9,7 +9,15 @@ class Writer:
         self.references = references
 
     @staticmethod
-    def sam(output, offset=0, sam_header=b'', references=()):
+    def sam(output, offset=0, sam_header=b'', references=()) -> 'Writer':
+        """
+        Determines is the output is randomly accessible and returns an instance of SAMStreamWriter or SAMBufferWriter.
+        :param output: The buffer or stream to output to.
+        :param offset: If a buffer, the offset into the buffer to start at.
+        :param sam_header: Bytes like object containing the SAM formatted header to write to the output.
+        :param references: List of Reference objects to use in record references
+        :return: Instance of SAMStreamWriter or SAMBufferWriter
+        """
         sam_header = sam.pack_header(sam_header, references)
         if isinstance(output, (io.RawIOBase, io.BufferedIOBase)):
             output.write(sam_header)
@@ -20,7 +28,7 @@ class Writer:
             return SAMBufferWriter(output, offset + sam_len, references)
 
     @staticmethod
-    def bam(output, offset=0, sam_header=b'', references=()):
+    def bam(output, offset=0, sam_header=b'', references=()) -> 'Writer':
         sam_header = sam.pack_header(sam_header, references)
         if isinstance(output, (io.RawIOBase, io.BufferedIOBase)):
             bam.header_to_stream(output, sam_header, references)
