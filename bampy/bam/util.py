@@ -1,20 +1,20 @@
 import ctypes as C
+from typing import Tuple
 
 from .. import sam
 from ..reference import Reference
 
 SIZEOF_INT32 = C.sizeof(C.c_int32)
 
-# Magic bytes identifying BAM record
 MAGIC = b'BAM\x01'
+"""bytes: Magic bytes identifying BAM record"""
 
-# Tuple of ASCII encoded CIGAR operations indexed by their numeric op codes.
 OP_CODES = tuple(b"MIDNSHP=X"[i:i + 1] for i in range(9))
+"""tuple: ASCII encoded CIGAR operations indexed by their numeric op codes."""
 
-# Tuple of ASCII encoded sequence values indexed by their numeric code.
 SEQUENCE_VALUES = tuple(b"=ACMGRSVTWYHKDBN"[i:i + 1] for i in range(9))
+"""tuple: ASCII encoded sequence values indexed by their numeric code."""
 
-# Tuple of boolean values ordered by op code indicating if op consumes a query sequence position.
 CONSUMES_QUERY = (
     True,  # M
     True,  # I
@@ -26,8 +26,8 @@ CONSUMES_QUERY = (
     True,  # =
     True,  # X
 )
+"""tuple: Boolean values ordered by op code indicating if op consumes a query sequence position."""
 
-# Tuple of boolean values ordered by op code indicating if op consumes a reference position.
 CONSUMES_REFERENCE = (
     True,  # M
     False,  # I
@@ -39,14 +39,14 @@ CONSUMES_REFERENCE = (
     True,  # =
     True,  # X
 )
-
+"""tuple: Boolean values ordered by op code indicating if op consumes a reference position."""
 
 def is_bam(buffer, offset=0):
     """
     Helper to determine if passed buffer contains a BAM record.
     :param buffer: Buffer containing unknown data.
     :param offset: Offset into buffer to being reading.
-    :return: True if offset points to begginning of a BAM record, False otherwise.
+    :return: True if offset points to beginning of a BAM record, False otherwise.
     """
     return buffer[offset:offset + 4] == MAGIC
 
@@ -95,12 +95,12 @@ def _to_str(data):
         return str(data.value)
 
 
-def header_from_stream(stream, _magic=None) -> tuple(bytearray, list, int):
+def header_from_stream(stream, _magic=None) -> Tuple[bytearray, list, int]:
     """
     Read in BAM header data.
     Note: SAM formatted header data will likely contain duplicate reference data.
     :param stream: Stream containing header data.
-    :param _magic: Data consumed from stream while peeking. Will be appended to read data.
+    :param _magic: Data consumed from stream while peeking. Will be prepended to read data.
     :return: Tuple containing (Bytes object containing SAM formatted header, list of Reference objects, placeholder to keep return value consistent with header_from_buffer())
     """
     # Provide a friendly way of peeking into a stream for data type discovery
@@ -139,7 +139,7 @@ def header_from_stream(stream, _magic=None) -> tuple(bytearray, list, int):
     return header, refs, 0
 
 
-def header_from_buffer(buffer, offset=0) -> tuple(bytearray, list, int):
+def header_from_buffer(buffer, offset=0) -> Tuple[bytearray, list, int]:
     """
     Read in BAM header data.
     Note: SAM formatted header data will likely contain duplicate reference data.

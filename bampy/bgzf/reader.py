@@ -1,3 +1,7 @@
+"""
+Provides a convenience iterator to read in block data.
+"""
+
 import ctypes as C
 import io
 
@@ -6,18 +10,20 @@ from .block import Block
 
 
 class EmptyBlock(ValueError):
+    """Exception used to signal that a block with no compressed data was found."""
     pass
 
 
-def Reader(input, offset: int = 0, peek=None):
-    if isinstance(input, (io.RawIOBase, io.BufferedIOBase)):
-        return StreamReader(input, peek)
-    else:
-        return BufferReader(input, offset)
-
-
 class _Reader:
+    """
+    Base class for buffer and stream readers.
+    Provides Iterable interface to read in blocks.
+    """
     def __init__(self, input):
+        """
+        Constructor.
+        :param input: Block data source.
+        """
         self.total_in = 0
         self.total_out = 0
         self.remaining = 0
@@ -58,8 +64,31 @@ class _Reader:
         raise NotImplementedError()
 
 
+def Reader(input, offset: int = 0, peek=None) -> _Reader:
+    """
+    Helper to provide a unified reader interface.
+    Resolves if input is randomly accessible and provides the appropriate _Reader implementation.
+    :param input: A stream or buffer object.
+    :param offset: If input is a buffer, the offset into the buffer to begin reading. Ignored otherwise.
+    :param peek: Data consumed from stream while peeking. Will be prepended to read data. Ignored if buffer passed as input.
+    :return: An instance of StreamReader or BufferReader.
+    """
+    if isinstance(input, (io.RawIOBase, io.BufferedIOBase)):
+        return StreamReader(input, peek)
+    else:
+        return BufferReader(input, offset)
+
+
 class StreamReader(_Reader):
+    """
+    Implements _Reader to handle input data that is not accessible through a buffer interface.
+    """
     def __init__(self, input, peek=None):
+        """
+        Constructor.
+        :param input: Stream object to read from.
+        :param peek: Data consumed from stream while peeking. Will be prepended to read data.
+        """
         super().__init__(input)
         self._peek = peek
 
@@ -76,7 +105,15 @@ class StreamReader(_Reader):
 
 
 class BufferReader(_Reader):
+    """
+    Implements _Reader to handle input data that is accessible through a buffer interface.
+    """
     def __init__(self, input, offset=0):
+        """
+        Constructor.
+        :param input: Buffer object to read from.
+        :param offset: The offset into the input buffer to begin reading from.
+        """
         super().__init__(input)
         self._len = len(input)
         self.offset = offset

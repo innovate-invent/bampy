@@ -1,3 +1,7 @@
+"""
+Provides convenience interface to write data to BGZF blocks.
+"""
+
 import ctypes as C
 import io
 
@@ -12,15 +16,17 @@ SIZEOF_FIXED_XLEN_HEADER = len(block.FIXED_XLEN_HEADER)
 SIZEOF_UINT16 = C.sizeof(C.c_uint16)
 
 
-def Writer(output, offset=0):
-    if isinstance(output, (io.RawIOBase, io.BufferedIOBase)):
-        return StreamWriter(output)
-    else:
-        return BufferWriter(output, offset)
-
-
 class _Writer:
+    """
+    Base class for buffer and stream writers.
+    Provides Callable interface to compress data into blocks.
+    """
     def __init__(self, output, offset=0):
+        """
+        Constructor.
+        :param output: The buffer to output compressed data.
+        :param offset: The offset into buffer to begin writing.
+        """
         self._state = None
         self._bsize = None
         self.total_in = 0
@@ -65,6 +71,11 @@ class _Writer:
             return data_len
 
     def finish_block(self, flush=True):
+        """
+        Finalises current BGZF block.
+        :param flush: Set to false if Z_FINISH already passed to zlib.raw_compress() for current state.
+        :return: None
+        """
         if self._bsize is None: return
         state = self._state
         if flush and state:
@@ -80,10 +91,25 @@ class _Writer:
         self._state = None
         self._bsize = None
 
-    def block_remaining(self):
+    def block_remaining(self) -> int:
+        """
+        Calculates amount of remaining space in current block after compression.
+        Is only accurate after after setting boundary=True when calling __call__().
+        :return: Amount of remaining space in bytes.
+        """
         return MAX_CDATA_SIZE - self._state.total_out if self._state else 0
 
     def __call__(self, data, boundary=False):
+        """
+        Pass data to the zlib compressor.
+        Setting boundary to True flushes the compression buffer. Doing this often can severely impact compression efficacy.
+        Passing data larger than the maximum block size will result in the data being split between blocks.
+        A new block may be created between calls. To gaurantee that data is compressed into the same block check block_remaining()
+        before submitting the data.
+        :param data: Data to add to compression stream.
+        :param boundary: Set to True to signal the end of data is a resonable place to start a new block.
+        :return: None
+        """
         data_len = C.sizeof(data) if isinstance(data, C.Array) else len(data)
         data_offset = 0
         while data_offset < data_len:
@@ -94,13 +120,34 @@ class _Writer:
             self.finish_block(True)
 
 
+def Writer(output, offset=0) -> _Writer:
+    """
+    Helper to provide a unified writer interface.
+    Resolves if output is randomly accessible and provides the appropriate _Writer implementation.
+    :param output: A stream or buffer object.
+    :param offset: If output is a buffer, the offset into the buffer to begin writing. Ignored otherwise.
+    :return: An instance of StreamWriter or BufferWriter.
+    """
+    if isinstance(output, (io.RawIOBase, io.BufferedIOBase)):
+        return StreamWriter(output)
+    else:
+        return BufferWriter(output, offset)
+
+
 class BufferWriter(_Writer):
+    """
+    Implements _Writer to output to a randomly accessible buffer interface.
+    """
     def __init__(self, output, offset=0):
         super().__init__(output, offset)
         self._data_buffer = output
 
 
 class StreamWriter(_Writer):
+    """
+    Implements _Writer to output to a stream.
+    Internally buffers each block until it is finished before writing to the stream.
+    """
     def __init__(self, output):
         super().__init__(output, 0)
         self._data_buffer = bytearray(MAX_BLOCK_SIZE)

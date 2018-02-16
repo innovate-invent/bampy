@@ -25,6 +25,9 @@ class ExtraFlags(IntFlag):
 
 # TODO Add check for other block flags
 class Header(C.LittleEndianStructure):
+    """
+    Represents BGZF/GZIP block header.
+    """
     _pack_ = 1
     _fields_ = [
         ("id1", C.c_uint8),  # ID1   gzip IDentifier1            uint8 31
@@ -41,9 +44,10 @@ class Header(C.LittleEndianStructure):
 SIZEOF_HEADER = C.sizeof(Header)
 
 
-# Extra subfield(s) (total size=XLEN)
-#   Additional RFC1952 extra subfields if present
 class SubField(C.LittleEndianStructure):
+    """
+    Represents a BGZF/GZIP block subfield header.
+    """
     _pack_ = 1
     _fields_ = [
         ("SI1", C.c_uint8),  # SI1 Subfield Identifier1        uint8 66
@@ -56,6 +60,9 @@ SIZEOF_SUBFIELD = C.sizeof(SubField)
 
 
 class BSIZE(SubField):
+    """
+    Dedicated SubField subclass for the required block size field.
+    """
     _pack_ = 1
     _fields_ = [
         ("value", C.c_uint16)
@@ -71,6 +78,9 @@ FIXED_XLEN_HEADER = b'\x1f\x8b\x08\x04\x00\x00\x00\x00\x00\xff\x06\x00\x42\x43\x
 
 
 class Trailer(C.LittleEndianStructure):
+    """
+    Represents BGZF/GZIP block trailer.
+    """
     _pack_ = 1
     _fields_ = [
         ("CRC32", C.c_uint32),  # CRC32 CRC-32                      uint32
@@ -83,9 +93,18 @@ MAX_CDATA_SIZE = MAX_BLOCK_SIZE - len(FIXED_XLEN_HEADER) - 2 - SIZEOF_TRAILER
 
 
 class Block:
+    """
+    Represents BGZF/GZIP block.
+    """
     __slots__ = '_header', '_trailer', 'extra_fields', 'size', 'flags'
 
     def __init__(self, header: Header, extra_fields: dict, trailer: Trailer):
+        """
+        Constructor.
+        :param header: Header object instance.
+        :param extra_fields: Dictionary of extra fields keyed by the two byte identifier.
+        :param trailer: Trailer object instance.
+        """
         self._header = header
         self.flags = BlockFlags(header.flag)
         self.extra_fields = extra_fields
@@ -113,6 +132,13 @@ class Block:
 
     @staticmethod
     def from_buffer(buffer, offset=0) -> ('Block', memoryview):
+        """
+        Load a block from a buffer.
+        This references the buffer data and does not copy in memory.
+        :param buffer: Buffer to read from.
+        :param offset: Offset into buffer pointing to first block byte.
+        :return: Tuple containing: (Block instance, memoryview containing compressed block data).
+        """
         start = offset
         buffer = memoryview(buffer)
         header = Header.from_buffer(buffer, offset)
@@ -132,6 +158,13 @@ class Block:
 
     @staticmethod
     def from_stream(stream, _magic=None) -> ('Block', memoryview):
+        """
+        Load a block from a stream.
+        This copies the stream data into memory.
+        :param stream: Stream to read from.
+        :param _magic: Data consumed from stream while peeking. Will be appended to read data.
+        :return: Tuple containing: (Block instance, memoryview containing compressed block data).
+        """
         # Provide a friendly way of peeking into a stream for data type discovery
         if _magic:
             header_buffer = bytearray(SIZEOF_HEADER - len(_magic))
@@ -163,7 +196,12 @@ class Block:
         return Block(header, extra_fields, trailer), buffer
 
     @staticmethod
-    def _parseExtra(buffer):
+    def _parseExtra(buffer) -> dict:
+        """
+        Parse GZIP formatted extra data fields into dictionary.
+        :param buffer: Buffer containing extra field data.
+        :return: Dict containing field values keyed on two byte field identifier.
+        """
         extraFields = {}
         fieldOffset = 0
         while fieldOffset < len(buffer):
@@ -174,7 +212,12 @@ class Block:
         return extraFields
 
     @staticmethod
-    def _getSize(extra_fields):
+    def _getSize(extra_fields) -> int:
+        """
+        Helper to parse BGZF block size subfield.
+        :param extra_fields: Dict returned from _parseextra().
+        :return: Total size of block.
+        """
         # Load BGZF required BC field
         BC = extra_fields.get(b'BC')
         if BC:

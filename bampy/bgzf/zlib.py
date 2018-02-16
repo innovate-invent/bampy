@@ -1,3 +1,11 @@
+"""
+Provides a basic wrapper for the zlib library.
+
+This uses ctypes to load the zlib dll from the system.
+If this is run on a Windows system and ctypes.util.find() can not find zlibwapi.dll it will look in the folder this
+code is stored in.
+"""
+
 import ctypes as C
 import platform
 from ctypes import util
@@ -107,6 +115,22 @@ SIZEOF_ZSTATE = C.sizeof(zState)
 
 
 def raw_compress(src=None, dest=None, mode=Z_FINISH, state=None, level=8, wbits=MAX_WBITS, memlevel=8, dictionary=None) -> (int, zState):
+    """
+    Wraps zlib.deflate().
+    Manages compression state and conversion to ctypes compatible types.
+    Set src and dest to None to preserve their values between calls.
+    For example, on the initial call set src to some input data and dest to an output buffer.
+    On subsequent calls until the output buffer is full, leave dest set to None and src a new buffer of data to compress.
+    :param src: Data buffer to compress or None.
+    :param dest: Data buffer for compressed data to be written to or None.
+    :param mode: Compression flush mode. Use Z_NO_FLUSH, Z_PARTIAL_FLUSH, or Z_FINISH. See zlib documentation for full description.
+    :param state: State instance returned from previous call or None on first call.
+    :param level: zlib algorithm compression level from 0-9. Default=8. Pass -1 for zlib default.
+    :param wbits: Compression window bit size. Defaults to MAX_WBITS, do not change unless you REALLY know what you are doing.
+    :param memlevel: zlib memory usage level. See zlib documentation for more.
+    :param dictionary: zlib compression algorith, see zlib documentation for more.
+    :return: Tuple containing (Error code, zlib state object)
+    """
     if not state and (src is None or dest is None):
         raise ValueError("No initialised state. Provide src and dest on first call.")
 
@@ -142,6 +166,18 @@ def raw_compress(src=None, dest=None, mode=Z_FINISH, state=None, level=8, wbits=
 
 
 def raw_decompress(src=None, dest=None, mode=Z_FINISH, state=None, wbits=MAX_WBITS, dictionary=None) -> (int, zState):
+    """
+    Wraps zlib.inflate().
+    Manages decompression state and conversion to ctypes compatible types.
+    Set src and dest to None to preserve their values between calls.
+    :param src: Data buffer to decompress or None.
+    :param dest: Data buffer for decompressed data to be written to or None.
+    :param mode: Decompression flush mode. Use Z_NO_FLUSH, Z_PARTIAL_FLUSH, or Z_FINISH. See zlib documentation for full description.
+    :param state: State instance returned from previous call or None on first call.
+    :param wbits: Compression window bit size. Defaults to MAX_WBITS, do not change unless you REALLY know what you are doing.
+    :param dictionary: zlib compression algorith, see zlib documentation for more.
+    :return: Tuple containing (Error code, zlib state object)
+    """
     if not state and (src is None or dest is None):
         raise ValueError("No initialised state. Provide src and dest on first call.")
 
@@ -178,4 +214,9 @@ def raw_decompress(src=None, dest=None, mode=Z_FINISH, state=None, wbits=MAX_WBI
 
 
 def crc32(src):
+    """
+    Calculate the CRC32 value of the input data.
+    :param src: Buffer containing input data to evaluate.
+    :return: CRC32 value of src.
+    """
     return _zlib.crc32(_zlib.crc32(0, Z_NULL, 0), src, len(src))
