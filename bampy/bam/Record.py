@@ -80,11 +80,11 @@ class Record:
     @staticmethod
     def _data_from_buffer(header, buffer, offset=0) -> (C.Array, PackedCIGAR, PackedSequence, C.Array, C.Array):
         """
-        Maps out the name, cigar, sequence, quality scores, and tag data in memory
-        :param header: The RecordHeader instance that describes the data
-        :param buffer: The buffer to map
-        :param offset: The offset into the buffer that should point at the first byte of the name data
-        :return: a tuple containing in order the name, cigar, sequence, quality scores, and tags
+        Maps out the name, cigar, sequence, quality scores, and tag data in memory.
+        :param header: The RecordHeader instance that describes the data.
+        :param buffer: The buffer to map.
+        :param offset: The offset into the buffer that should point at the first byte of the name data.
+        :return: Tuple containing in order the name, cigar, sequence, quality scores, and tags.
         """
         start = offset
         # Name
@@ -118,10 +118,10 @@ class Record:
     def from_buffer(buffer, offset=0, references=[]) -> 'Record':
         """
         Maps record data from a buffer object.
-        :param buffer: The buffer to map into
-        :param offset: The offset into the buffer pointing at the first byte of the record
-        :param references: A list of Reference objects to dereference the record reference id
-        :return: An instance of Record
+        :param buffer: The buffer to map into.
+        :param offset: The offset into the buffer pointing at the first byte of the record.
+        :param references: A list of Reference objects to dereference the record reference id.
+        :return: An instance of Record.
         """
         buffer = memoryview(buffer)
         try:
@@ -133,10 +133,10 @@ class Record:
 
     def to_buffer(self, buffer, offset) -> 'Record':
         """
-        Copies the Record instance into a buffer object
-        :param buffer: The buffer to copy into
-        :param offset: The offset into the buffer pointing where the first byte will be written
-        :return: An instance of the new record in buffer
+        Copies the Record instance into a buffer object.
+        :param buffer: The buffer to copy into.
+        :param offset: The offset into the buffer pointing where the first byte will be written.
+        :return: An instance of the new record in buffer.
         """
         # TODO check if buffer large enough
         buffer = memoryview(buffer)
@@ -161,10 +161,10 @@ class Record:
     @staticmethod
     def from_stream(stream, references=[]) -> 'Record':
         """
-        Copies record data from the stream into memory
-        :param stream: The stream instance to read from (must have readinto() function)
-        :param references: A list of Reference objects to dereference the record reference id
-        :return: An instance of the read reacord
+        Copies record data from the stream into memory.
+        :param stream: The stream instance to read from (must have readinto() function).
+        :param references: A list of Reference objects to dereference the record reference id.
+        :return: An instance of the read record.
         """
         header = bytearray(SIZEOF_RECORDHEADER)
         if stream.readinto(header) != SIZEOF_RECORDHEADER:
@@ -177,8 +177,8 @@ class Record:
 
     def to_stream(self, stream) -> None:
         """
-        Copies the record into the stream object
-        :param stream: The stream instance to read from (must have write() function)
+        Copies the record into the stream object.
+        :param stream: The stream instance to read from (must have write() function).
         :return: None
         """
         data = self.pack()
@@ -232,8 +232,8 @@ class Record:
         Prepares the record to be written as BAM format.
         Converts sequence and cigar to PackedSequence, PackedCIGAR.
         Packs all tags into byte array.
-        :param update: Set to True to call update()
-        :return: List containing in order: record header, name, name null terminator, cigar buffer, sequence buffer, quality scores, tags
+        :param update: Set to True to call update().
+        :return: List containing in order: record header, name, name null terminator, cigar buffer, sequence buffer, quality scores, tags.
         """
         self.sequence = PackedSequence.pack(self.sequence)
         self.cigar = PackedCIGAR.pack(self.cigar)
@@ -251,7 +251,7 @@ class Record:
     def unpack(self) -> None:
         """
         Unpack record data for faster access.
-        See PackedCIGAR.unpack() and PackedSequence.unpack()
+        See PackedCIGAR.unpack() and PackedSequence.unpack().
         :return: None
         """
         self.sequence = self.sequence.unpack()
@@ -262,9 +262,9 @@ class Record:
     def from_sam(line, references) -> 'Record':
         """
         Parse SAM record into memory.
-        :param line: A bytes like object containing the record data (Must have split() function)
-        :param references: A list of Reference objects to dereference the record reference id
-        :return: A Record instance representing the record data
+        :param line: A bytes like object containing the record data (Must have split() function).
+        :param references: A list of Reference objects to dereference the record reference id.
+        :return: A Record instance representing the record data.
         """
         name, flags, reference_name, position, mapping_quality, cigar, next_reference_name, next_position, template_length, sequence, quality_scores, *_tags = line.split(
             b"\t")
@@ -300,7 +300,7 @@ class Record:
     def __repr__(self) -> str:
         """
         Returns a string representation of the record data.
-        For debugging use only, see __bytes__ to convert to SAM.
+        For debugging use only, see __bytes__() to convert to SAM.
         :return: String representing record.
         """
         return "{qname}\t{flag}\t{rname}\t{pos}\t{mapq}\t{cigar}\t{rnext}\t{pnext}\t{tlen}\t{seq}\t{qual}".format(
@@ -320,7 +320,7 @@ class Record:
     def __bytes__(self) -> bytes:
         """
         Converts record to SAM format.
-        :return: A bytes object representing record data in SAM format
+        :return: A bytes object representing record data in SAM format.
         """
         return b"\t".join((
             self.name,
@@ -347,7 +347,7 @@ class Record:
 
     def copy(self) -> 'Record':
         """
-        Copy the record in memory
+        Copy the record in memory.
         :return: A new instance of Record with the copied data.
         """
         new = Record.__new__(Record)

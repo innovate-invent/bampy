@@ -5,12 +5,17 @@ from ..reference import Reference
 
 SIZEOF_INT32 = C.sizeof(C.c_int32)
 
+# Magic bytes identifying BAM record
 MAGIC = b'BAM\x01'
 
+# Tuple of ASCII encoded CIGAR operations indexed by their numeric op codes.
 OP_CODES = tuple(b"MIDNSHP=X"[i:i + 1] for i in range(9))
+
+# Tuple of ASCII encoded sequence values indexed by their numeric code.
 SEQUENCE_VALUES = tuple(b"=ACMGRSVTWYHKDBN"[i:i + 1] for i in range(9))
 
-CONSUMES_QUERY = [
+# Tuple of boolean values ordered by op code indicating if op consumes a query sequence position.
+CONSUMES_QUERY = (
     True,  # M
     True,  # I
     False,  # D
@@ -20,9 +25,10 @@ CONSUMES_QUERY = [
     False,  # P
     True,  # =
     True,  # X
-]
+)
 
-CONSUMES_REFERENCE = [
+# Tuple of boolean values ordered by op code indicating if op consumes a reference position.
+CONSUMES_REFERENCE = (
     True,  # M
     False,  # I
     True,  # D
@@ -32,37 +38,71 @@ CONSUMES_REFERENCE = [
     False,  # P
     True,  # =
     True,  # X
-]
+)
 
 
 def is_bam(buffer, offset=0):
+    """
+    Helper to determine if passed buffer contains a BAM record.
+    :param buffer: Buffer containing unknown data.
+    :param offset: Offset into buffer to being reading.
+    :return: True if offset points to begginning of a BAM record, False otherwise.
+    """
     return buffer[offset:offset + 4] == MAGIC
 
 
 class InvalidBAM(ValueError):
+    """
+    Exception to indicate invalid or unexpected data was read while trying to parse BAM formatted data.
+    """
     pass
 
 
 class BufferUnderflow(ValueError):
+    """
+    Exception to indicate that the buffer being read does not contain enough data to finish reading a unit of BAM formatted data.
+    """
     pass
 
 
 def _qscore_to_str(data):
+    """
+    Monkey-patch used for debugging QSCORE data
+    :param data:
+    :return:
+    """
     return ''.join(map(lambda x: chr(x + 33), data))
 
 
 def _to_bytes(data):
+    """
+    Monkey-patch used for debugging ctypes objects buffer data.
+    :param data:
+    :return:
+    """
     return data.value
 
 
 def _to_str(data):
+    """
+    Monkey-patch used for debugging ctypes objects ASCII encoded string data.
+    :param data:
+    :return:
+    """
     if isinstance(data.value, bytes):
         return data.value.decode('ASCII')
     else:
         return str(data.value)
 
 
-def header_from_stream(stream, _magic=None):
+def header_from_stream(stream, _magic=None) -> tuple(bytearray, list, int):
+    """
+    Read in BAM header data.
+    Note: SAM formatted header data will likely contain duplicate reference data.
+    :param stream: Stream containing header data.
+    :param _magic: Data consumed from stream while peeking. Will be appended to read data.
+    :return: Tuple containing (Bytes object containing SAM formatted header, list of Reference objects, placeholder to keep return value consistent with header_from_buffer())
+    """
     # Provide a friendly way of peeking into a stream for data type discovery
     if not _magic:
         magic = bytearray(4)
@@ -99,7 +139,14 @@ def header_from_stream(stream, _magic=None):
     return header, refs, 0
 
 
-def header_from_buffer(buffer, offset=0):
+def header_from_buffer(buffer, offset=0) -> tuple(bytearray, list, int):
+    """
+    Read in BAM header data.
+    Note: SAM formatted header data will likely contain duplicate reference data.
+    :param buffer: Buffer containing header data.
+    :param offset: Offset into buffer pointing to first byte of header data.
+    :return: Tuple containing (Bytes object containing SAM formatted header, list of Reference objects, offset into buffer where header ends and record data begins)
+    """
     buffer_len = len(buffer)
     magic = (C.c_char * 4).from_buffer(buffer, offset)  # magic BAM magic string char[4] BAM\1
     if magic.raw != MAGIC:
@@ -123,33 +170,54 @@ def header_from_buffer(buffer, offset=0):
         length = C.c_int32.from_buffer(buffer, offset).value  # l_name Length of the reference name plus 1 (including NUL) int32 t
         if buffer_len < offset + length:
             raise BufferUnderflow()
-        offset += C.sizeof(C.c_int32)
+        offset += SIZEOF_INT32
         name = (C.c_char * length).from_buffer(buffer, offset)  # name Reference sequence name; NUL-terminated char[l name]
         offset += length
         seq_length = C.c_int32.from_buffer(buffer, offset)  # l_ref Length of the reference sequence int32 t
-        offset += C.sizeof(C.c_int32)
+        offset += SIZEOF_INT32
         refs.append(Reference(_to_str(name), seq_length.value), i)
     return header.raw, refs, offset
 
 
 def pack_header(sam_header=b'', references=()) -> bytearray:
+    """
+    Generate BAM header.
+    :param sam_header: ASCII encoded SAM header to include.
+    :param references: List of Reference objects. Order of list determines record index id's.
+    :return: bytearray object containing BAM formatted header.
+    """
     sam_header = sam.pack_header(sam_header, references)
     bam_header = bytearray(MAGIC)
     l_text = len(sam_header)
-    bam_header += (l_text.to_bytes(C.sizeof(C.c_int32), 'little', signed=True)
+    bam_header += (l_text.to_bytes(SIZEOF_INT32, 'little', signed=True)
                    + sam_header
-                   + len(references).to_bytes(C.sizeof(C.c_int32), 'little', signed=True))
+                   + len(references).to_bytes(SIZEOF_INT32, 'little', signed=True))
     for ref in references:
         bam_header += ref.pack()
     return bam_header
 
 
-def header_to_stream(stream, sam_header=b'', references=()):
+def header_to_stream(stream, sam_header=b'', references=()) -> int:
+    """
+    Write BAM formatted header to stream.
+    :param stream: Stream to write to.
+    :param sam_header: ASCII encoded SAM header to include.
+    :param references: List of Reference objects. Order of list determines record index id's.
+    :return: int(0)
+    """
     stream.write(pack_header(sam_header, references))
     return 0
 
 
-def header_to_buffer(buffer, offset=0, sam_header=b'', references=()):
+def header_to_buffer(buffer, offset=0, sam_header=b'', references=()) -> int:
+    """
+    Write BAM formatted header to buffer.
+    :param buffer: buffer to write to.
+    :param offset: Offset into buffer to begin writing from.
+    :param sam_header: ASCII encoded SAM header to include.
+    :param references: List of Reference objects. Order of list determines record index id's.
+    :return: int(0)
+    """
     header = pack_header(sam_header, references)
     end = offset + len(header)
     buffer[offset: end] = header
@@ -157,6 +225,11 @@ def header_to_buffer(buffer, offset=0, sam_header=b'', references=()):
 
 
 def alignment_length(cigar):
+    """
+    Count number of reference consuming positions that CIGAR represents.
+    :param cigar: Iterable returning tuples of the form (op length, op).
+    :return: Total alignment length of CIGAR.
+    """
     total = 0
     for count, op in cigar:
         if CONSUMES_REFERENCE[op]:

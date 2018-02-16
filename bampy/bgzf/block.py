@@ -79,7 +79,7 @@ class Trailer(C.LittleEndianStructure):
 
 
 SIZEOF_TRAILER = C.sizeof(Trailer)
-MAX_CDATA_SIZE = MAX_BLOCK_SIZE - len(FIXED_XLEN_HEADER) - 2 - C.sizeof(Trailer)
+MAX_CDATA_SIZE = MAX_BLOCK_SIZE - len(FIXED_XLEN_HEADER) - 2 - SIZEOF_TRAILER
 
 
 class Block:
@@ -151,13 +151,13 @@ class Block:
         assert stream.readinto(extra_fields_buffer) == header.extra_length
         extra_fields = Block._parseExtra(extra_fields_buffer)
 
-        data_size = Block._getSize(extra_fields) - SIZEOF_HEADER - C.sizeof(Trailer) - header.extra_length
+        data_size = Block._getSize(extra_fields) - SIZEOF_HEADER - SIZEOF_TRAILER - header.extra_length
         buffer = memoryview(bytearray(data_size))
 
         assert stream.readinto(buffer) == data_size
 
-        trailer = bytearray(C.sizeof(Trailer))
-        assert stream.readinto(trailer) == C.sizeof(Trailer)
+        trailer = bytearray(SIZEOF_TRAILER)
+        assert stream.readinto(trailer) == SIZEOF_TRAILER
         trailer = Trailer.from_buffer(trailer)
 
         return Block(header, extra_fields, trailer), buffer

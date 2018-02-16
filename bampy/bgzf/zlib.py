@@ -103,6 +103,9 @@ class zState(C.Structure):
     ]
 
 
+SIZEOF_ZSTATE = C.sizeof(zState)
+
+
 def raw_compress(src=None, dest=None, mode=Z_FINISH, state=None, level=8, wbits=MAX_WBITS, memlevel=8, dictionary=None) -> (int, zState):
     if not state and (src is None or dest is None):
         raise ValueError("No initialised state. Provide src and dest on first call.")
@@ -125,7 +128,7 @@ def raw_compress(src=None, dest=None, mode=Z_FINISH, state=None, level=8, wbits=
         state.avail_out = len(dest)
 
     if err is None:
-        err = _zlib.deflateInit2_(C.byref(state), level, Z_DEFLATED, -wbits, memlevel, Z_DEFAULT_STRATEGY, ZLIB_VERSION, C.sizeof(zState))
+        err = _zlib.deflateInit2_(C.byref(state), level, Z_DEFLATED, -wbits, memlevel, Z_DEFAULT_STRATEGY, ZLIB_VERSION, SIZEOF_ZSTATE)
         if err == Z_OK and dictionary:
             err = _zlib.deflateSetDictionary(C.byref(state), C.cast(C.c_char_p(dictionary), C.POINTER(C.c_ubyte)), len(dictionary))
 
@@ -160,7 +163,7 @@ def raw_decompress(src=None, dest=None, mode=Z_FINISH, state=None, wbits=MAX_WBI
         state.avail_out = len(dest)
 
     if err == Z_NULL:
-        err = _zlib.inflateInit2_(C.byref(state), -wbits, ZLIB_VERSION, C.sizeof(zState))
+        err = _zlib.inflateInit2_(C.byref(state), -wbits, ZLIB_VERSION, SIZEOF_ZSTATE)
 
     if err == Z_OK:
         err = _zlib.inflate(C.byref(state), mode)

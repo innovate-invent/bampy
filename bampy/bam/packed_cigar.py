@@ -4,6 +4,9 @@ from .util import OP_CODES
 
 
 class PackedCIGAR:
+    """
+    Represents a CIGAR string and stores the operations as BAM format in memory.
+    """
     __slots__ = "buffer"
 
     def __init__(self, buffer: memoryview):
@@ -39,7 +42,7 @@ class PackedCIGAR:
             start = i.start or 0
             stop = i.stop or len(self)
             step = i.step or 1
-            if hasattr(value, '__iter__') and len(value) == (stop - start) / step:
+            if hasattr(value, '__iter__') and len(value) == (stop - start) // step:
                 for a, b in zip(range(start, stop, step), value):
                     self.buffer[a] = C.c_uint32.__ctype_le__(b)
             else:
@@ -58,10 +61,10 @@ class PackedCIGAR:
     @staticmethod
     def pack(from_buffer, to_buffer=None):
         """
-
-        :param from_buffer:
-        :param to_buffer:
-        :return:
+        Convert a list of CIGAR tuples into BAM CIGAR format.
+        :param from_buffer: The list of tuples to convert.
+        :param to_buffer: The buffer to write the BAM formatted operations to.
+        :return: If from_buffer is already an instance of PackedCIGAR then that instance will be returned, a new PackedCIGAR otherwise.
         """
         if isinstance(from_buffer, PackedCIGAR):
             # TODO memcpy to toBuffer
@@ -72,7 +75,15 @@ class PackedCIGAR:
         return packed
 
     def unpack(self):
+        """
+        Convert the BAM formatted CIGAR to a list of tuples.
+        :return: A list of tuples in the format (operation length, operation code).
+        """
         return list(self)
 
     def copy(self):
+        """
+        Duplicate the PackedCIGAR instance and underlying buffer.
+        :return: A new instance of the PackedCIGAR.
+        """
         return PackedCIGAR(bytearray(self.buffer))
