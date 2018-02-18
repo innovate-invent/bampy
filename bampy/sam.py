@@ -7,7 +7,15 @@ header_re = re.compile(r"\t([A-Za-z][A-Za-z0-9]):([ -~]+)")
 cigar_re = re.compile(r"([0-9]+)([MIDNSHPX=])")
 
 
-def header_from_stream(stream, _magic=None):
+def header_from_stream(stream, _magic=None) -> (dict, list, int):
+    """
+    Parse SAM formatted header from stream.
+    Dict of header values returned is structured as such: {Header tag:[ {Attribute tag: value}, ]}.
+    Header tags can occur more than once and so each list item represents a different tag line.
+    :param stream: Stream containing header data.
+    :param _magic: Data consumed from stream while peeking. Will be prepended to read data.
+    :return: Tuple containing (Dict of header values, list of Reference objects, placeholder to keep return value consistent with header_from_buffer()).
+    """
     header = defaultdict(list)
     while stream.peek(1)[0] == b'@':
         line = stream.readline()
@@ -20,7 +28,15 @@ def header_from_stream(stream, _magic=None):
     return header, [bam.Reference(ref[b'SN'], int(ref[b'LN'])) for ref in header.pop(b'SQ')], 0
 
 
-def header_from_buffer(buffer, offset=0):
+def header_from_buffer(buffer, offset=0) -> (dict, list, int):
+    """
+    Parse SAM formatted header from buffer.
+    Dict of header values returned is structured as such: {Header tag:[ {Attribute tag: value}, ]}.
+    Header tags can occur more than once and so each list item represents a different tag line.
+    :param buffer: Buffer containing header data.
+    :param offset: Offset into buffer pointing to first byte of header data.
+    :return: Tuple containing (Dict of header values, list of Reference objects, offset into buffer where header ends and record data begins).
+    """
     header = defaultdict(list)
     while buffer[offset] == b'@':
         end = buffer.find(b'\n', offset)
@@ -35,7 +51,13 @@ def header_from_buffer(buffer, offset=0):
     return header, [bam.Reference(ref[b'SN'], int(ref[b'LN'])) for ref in header.pop(b'SQ')], offset
 
 
-def pack_header(header, references=()):
+def pack_header(header, references=()) -> bytearray:
+    """
+    Convert dict object returned by sam.header_from_buffer and sam.header_from_stream to a buffer.
+    :param header: Dict containing header information or bytearray object.
+    :param references: List of Reference object to append to the header.
+    :return: Bytearray containing header data.
+    """
     if isinstance(header, dict):
         HD = bytearray()
         buffer = bytearray()

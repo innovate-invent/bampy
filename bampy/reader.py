@@ -1,3 +1,7 @@
+"""
+Provides convenience interface for reading HTS alignment data.
+"""
+
 import io
 import warnings
 
@@ -5,22 +9,42 @@ from . import bam, bgzf, sam
 
 
 class TruncatedFileWarning(UserWarning):
+    """
+    Exception to indicate the empty BGZF block marking EOF is missing, or that the BAM or SAM file unexpectedly reached EOF.
+    """
     pass
 
+class SAMHeader(tuple):
+    pass
 
-def discoverStream(stream):
+class BAMHeader(tuple):
+    pass
+
+def discover_stream(stream):
+    """
+    Determines if a stream contains BGZF, BAM, or SAM data.
+    :param stream: The stream to read.
+    :return: A tuple with a (BGZF block, cdata) if the stream is BGZF compressed,
+            or a SAMHeader/BAMHeader tuple of the form (SAM header data, list of References, int(0))
+    """
     peek = bytearray(4)
     stream.readinto(peek)
     if bgzf.is_bgzf(peek):
         return bgzf.Block.from_stream(stream, peek)
     elif bam.is_bam(peek):
-        return bam.header_from_stream(stream, peek)
+        return BAMHeader(bam.header_from_stream(stream, peek))
     else:
         # SAM
-        return sam.header_from_stream(stream, peek)
+        return SAMHeader(sam.header_from_stream(stream, peek))
 
 
 def Reader(input, offset=0):
+    """
+    Convenience interface for reading alignment records from BGZF/BAM/SAM files.
+    :param input: Stream or buffer containing alignment data.
+    :param offset: If input is a buffer, offset into buffer to begin reading from.
+    :return: Iterable that emits Record instances.
+    """
     if isinstance(input, (io.RawIOBase, io.BufferedIOBase)):
         # Stream
         peek = bytearray(4)
@@ -43,6 +67,10 @@ def Reader(input, offset=0):
 
 
 class _Reader:
+    """
+    Base class for different stream/buffer bgzf/bam/sam implementations.
+    Provides Iterable interface to read in records.
+    """
     def __init__(self, input):
         self._input = input
 
@@ -54,11 +82,17 @@ class _Reader:
 
 
 class StreamReader(_Reader):
+    """
+    Base class for reading from a stream
+    """
     def __init__(self, input):
         super().__init__(input)
 
 
 class BufferReader(_Reader):
+    """
+    Base class for reading from a buffer
+    """
     def __init__(self, input, offset=0):
         super().__init__(input)
         self.offset = offset
@@ -69,6 +103,9 @@ class BufferReader(_Reader):
 
 
 class BGZFReader(_Reader):
+    """
+    Reads from BGZF stream or buffer and provides Iterable interface that emits Record instances.
+    """
     def __init__(self, source, offset=0, peek=None):
         if not isinstance(source, (io.RawIOBase, io.BufferedIOBase)) and source[-bgzf.SIZEOF_EMPTY_BLOCK:] != bgzf.EMPTY_BLOCK:
             warnings.warn("Missing EOF marker, data is possibly truncated.", TruncatedFileWarning)
