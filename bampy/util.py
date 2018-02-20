@@ -3,7 +3,15 @@ import os
 import stat
 
 
-def open_buffer(path, mode=os.O_RDWR | os.O_CREAT, size=0):
+def open_buffer(path, mode=os.O_RDWR | os.O_CREAT, size=0) -> mmap:
+    """
+    Open a memory mapped file as a buffer.
+    If mode opens file as read only the buffer will be set to copy on write.
+    :param path: String containing path to file.
+    :param mode: Forwarded to os.open(), defaults to os.O_RDWR | os.O_CREAT.
+    :param size: Size of buffer to create, 0 to keep existing file size. Default=0.
+    :return: mmap instance mapped to the specified file.
+    """
     fh = os.open(path, mode)
     stat_result = os.stat(fh)
     assert not stat.S_ISFIFO(stat_result.st_mode), "Can not open pipe as buffer."

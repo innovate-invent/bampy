@@ -6,6 +6,9 @@ If this is run on a Windows system and ctypes.util.find() can not find zlibwapi.
 code is stored in.
 """
 
+# TODO inflateReset/deflateReset may speed up [de]compression
+# TODO inflateBack avoids a copy during decompression
+
 import ctypes as C
 import platform
 from ctypes import util
@@ -212,11 +215,14 @@ def raw_decompress(src=None, dest=None, mode=Z_FINISH, state=None, wbits=MAX_WBI
 
     return err, state
 
+def bound(state, src_len):
+    return _zlib.deflateBound(C.byref(state), src_len)
 
-def crc32(src):
+def crc32(src, crc=None):
     """
     Calculate the CRC32 value of the input data.
     :param src: Buffer containing input data to evaluate.
+    :param crc: Existing CRC to add to or None.
     :return: CRC32 value of src.
     """
-    return _zlib.crc32(_zlib.crc32(0, Z_NULL, 0), src, len(src))
+    return _zlib.crc32(crc or _zlib.crc32(0, Z_NULL, 0), src, len(src))

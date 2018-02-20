@@ -34,11 +34,10 @@ class _Writer:
         self.offset = offset
         self._output = output
 
-    def _deflate(self, data, boundary=False) -> int:
+    def _deflate(self, data) -> int:
         """
         Manages the deflation state ensuring it does not exceed the block maximum size.
         :param data: The data to be compressed
-        :param boundary: Denotes a data boundary to partially flush the compression buffer and update the value block_remaining() returns
         :return: Offset into data that has been processed
         """
         state = self._state
@@ -65,8 +64,7 @@ class _Writer:
             self.finish_block()
             return 0
         else:
-            res, self._state = zlib.raw_compress(data, None if state else self._cdata, mode=zlib.Z_PARTIAL_FLUSH if boundary else zlib.Z_NO_FLUSH,
-                                                 state=state)
+            res, self._state = zlib.raw_compress(data, None if state else self._cdata, mode=zlib.Z_NO_FLUSH, state=state)
             assert res == zlib.Z_OK
             return data_len
 
@@ -97,9 +95,9 @@ class _Writer:
         Is only accurate after after setting boundary=True when calling __call__().
         :return: Amount of remaining space in bytes.
         """
-        return MAX_CDATA_SIZE - self._state.total_out if self._state else 0
+        return MAX_CDATA_SIZE - self._state.total_out - 1 if self._state else 0
 
-    def __call__(self, data, boundary=False):
+    def __call__(self, data):
         """
         Pass data to the zlib compressor.
         Setting boundary to True flushes the compression buffer. Doing this often can severely impact compression efficacy.
@@ -107,13 +105,12 @@ class _Writer:
         A new block may be created between calls. To gaurantee that data is compressed into the same block check block_remaining()
         before submitting the data.
         :param data: Data to add to compression stream.
-        :param boundary: Set to True to signal the end of data is a resonable place to start a new block.
         :return: None
         """
         data_len = C.sizeof(data) if isinstance(data, C.Array) else len(data)
         data_offset = 0
         while data_offset < data_len:
-            data_offset = self._deflate((C.c_ubyte * (data_len - data_offset)).from_buffer(data, data_offset), boundary=boundary)
+            data_offset = self._deflate((C.c_ubyte * (data_len - data_offset)).from_buffer(data, data_offset))
 
     def __del__(self):
         if self._state:

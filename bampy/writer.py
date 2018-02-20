@@ -91,15 +91,8 @@ class BGZFWriter(Writer):
         record_len = len(record)
         if record_len < bgzf.MAX_CDATA_SIZE and self._output.block_remaining() < record_len:
             self._output.finish_block()
-        it = iter(data)
-        cur = next(it)
-        try:
-            while True:
-                nxt = next(it)
-                self._output(cur)
-                cur = nxt
-        except StopIteration:
-            self._output(cur, boundary=True)
+        for datum in data:
+            self._output(datum)
 
     @property
     def offset(self):
