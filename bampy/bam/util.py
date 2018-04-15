@@ -1,5 +1,6 @@
 import ctypes as C
 from typing import Tuple
+from enum import IntEnum
 
 from .. import sam
 from ..reference import Reference
@@ -14,6 +15,19 @@ OP_CODES = tuple(b"MIDNSHP=X"[i:i + 1] for i in range(9))
 
 SEQUENCE_VALUES = tuple(b"=ACMGRSVTWYHKDBN"[i:i + 1] for i in range(9))
 """tuple: ASCII encoded sequence values indexed by their numeric code."""
+
+class CigarOps(IntEnum):
+    """Enum of numeric CIGAR operations."""
+    MATCH = 0 # M
+    INS = 1 # I
+    DEL = 2 # D
+    REF_SKIP = 3 # N
+    SOFT_CLIP = 4 # S
+    HARD_CLIP = 5 # H
+    PAD = 6 # P
+    EQUAL = 7 # =
+    DIFF = 8 # X
+    BACK = 9 # B
 
 CONSUMES_QUERY = (
     True,  # M
@@ -40,6 +54,19 @@ CONSUMES_REFERENCE = (
     True,  # X
 )
 """tuple: Boolean values ordered by op code indicating if op consumes a reference position."""
+
+CLIPPED = (
+    False,  # M
+    False,  # I
+    False,  # D
+    False,  # N
+    True,  # S
+    True,  # H
+    False,  # P
+    False,  # =
+    False,  # X
+)
+"""tuple: Boolean values ordered by op code indicating if op is soft or hard clip."""
 
 def is_bam(buffer, offset=0):
     """
@@ -135,7 +162,7 @@ def header_from_stream(stream, _magic=None) -> Tuple[bytearray, list, int]:
         stream.readinto(seq_length)
         seq_length = int.from_bytes(seq_length, byteorder='little',
                                     signed=True)  # C.c_int32.from_buffer(seq_length)  # l_ref Length of the reference sequence int32 t
-        refs.append(Reference(name.decode('ASCII'), seq_length), i)
+        refs.append(Reference(name.decode('ASCII'), seq_length, i))
     return header, refs, 0
 
 
@@ -175,7 +202,7 @@ def header_from_buffer(buffer, offset=0) -> Tuple[bytearray, list, int]:
         offset += length
         seq_length = C.c_int32.from_buffer(buffer, offset)  # l_ref Length of the reference sequence int32 t
         offset += SIZEOF_INT32
-        refs.append(Reference(_to_str(name), seq_length.value), i)
+        refs.append(Reference(_to_str(name), seq_length.value, i))
     return header.raw, refs, offset
 
 

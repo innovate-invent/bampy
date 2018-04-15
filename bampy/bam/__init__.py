@@ -4,12 +4,14 @@ This subpackage contains all of the code required to work with BAM formatted dat
 Classes:
     Record: The core representation of a BAM alignment record.
     Tag: Represents a record tag.
+    CigarOps: Enum of numeric CIGAR operations.
 
 Constants:
     OP_CODES (tuple): ASCII encoded CIGAR operations indexed by their numeric op codes.
     SEQUENCE_VALUES (tuple): ASCII encoded sequence values indexed by their numeric code.
     CONSUMES_QUERY (tuple): Boolean values ordered by op code indicating if op consumes a query sequence position.
     CONSUMES_REFERENCE (tuple): Boolean values ordered by op code indicating if op consumes a reference position.
+    CLIPPED (tuple): Boolean values ordered by op code indicating if op is soft or hard clip.
 
 For more:
     >> help(bampy.bam.record) for more information on the Record object.
@@ -21,4 +23,4 @@ For more:
 
 from .record import Record
 from .tag import Tag
-from .util import header_from_buffer, header_from_stream, header_to_buffer, header_to_stream, is_bam, pack_header, OP_CODES, SEQUENCE_VALUES, CONSUMES_REFERENCE, CONSUMES_QUERY
+from .util import header_from_buffer, header_from_stream, header_to_buffer, header_to_stream, is_bam, pack_header, OP_CODES, SEQUENCE_VALUES, CONSUMES_REFERENCE, CONSUMES_QUERY, CLIPPED, CigarOps

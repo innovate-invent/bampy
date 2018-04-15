@@ -28,11 +28,13 @@ class _Reader:
         self.total_out = 0
         self.remaining = 0
         self._input = input
+        self.buffer = None
 
     def _inflate(self, block, cdata):
         if self.remaining:
+            # Copy forward any remaining data into the next buffer
             edata = (C.c_ubyte * (block.uncompressed_size + self.remaining))()
-            C.memmove(edata, C.byref(self._data, len(self._data) - self.remaining), self.remaining)
+            C.memmove(edata, C.byref(self.buffer, len(self.buffer) - self.remaining), self.remaining)
             data = (C.c_ubyte * block.uncompressed_size).from_buffer(edata, self.remaining)
         else:
             data = (C.c_ubyte * block.uncompressed_size)()
@@ -45,17 +47,17 @@ class _Reader:
         self.total_out += state.total_out
 
         if self.remaining:
-            self._data = edata
+            self.buffer = edata
             self.remaining += len(data)
         else:
-            self._data = data
+            self.buffer = data
             self.remaining = len(data)
 
-        return self._data
+        return self.buffer
 
     @property
     def buffer(self):
-        return self._data
+        return self.buffer
 
     def __iter__(self):
         return self
@@ -66,7 +68,7 @@ class _Reader:
 
 def Reader(input, offset: int = 0, peek=None) -> _Reader:
     """
-    Helper to provide a unified reader interface.
+    Factory to provide a unified reader interface.
     Resolves if input is randomly accessible and provides the appropriate _Reader implementation.
     :param input: A stream or buffer object.
     :param offset: If input is a buffer, the offset into the buffer to begin reading. Ignored otherwise.
@@ -99,7 +101,7 @@ class StreamReader(_Reader):
                 raise EmptyBlock()
             self._inflate(block, cdata)
             self._peek = None
-            return self._data
+            return self.buffer
         except EOFError:
             raise StopIteration()
 
@@ -119,7 +121,7 @@ class BufferReader(_Reader):
         self.offset = offset
 
     def __next__(self):
-        while self.offset < self._len:
+        if self.offset < self._len:
             block, cdata = Block.from_buffer(self._input, self.offset)
             self.offset += len(block)
             if block.uncompressed_size:

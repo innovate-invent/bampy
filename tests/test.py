@@ -7,7 +7,7 @@ if True:
     stream_out = open("stream.bgzf.bam", 'wb')
     #stream_out_sam = open("stream.sam", 'wb')
     #buffer_in = open_buffer("normal.bam", 'r')
-    buffer_out = open_buffer("buffer.bgzf.bam", size=40 * 2 ** 20)
+    #buffer_out = open_buffer("buffer.bgzf.bam", size=40 * 2 ** 20)
     #buffer_out_sam = open_buffer("buffer.sam", size=117 * 2 ** 20 * 8)
     offset = 0
 
@@ -18,7 +18,7 @@ if True:
     #result = bam.header_from_buffer(bam.pack_header(header, ref))
 
     stream_writer = Writer.bgzf(stream_out, 0, header, ref)
-    buffer_writer = Writer.bgzf(buffer_out, 0, header, ref)
+    #buffer_writer = Writer.bgzf(buffer_out, 0, header, ref)
 
     #stream_writer_sam = Writer.sam(stream_out_sam, 0, header, ())
     #buffer_writer_sam = Writer.sam(buffer_out_sam, 0, header, ())
@@ -28,15 +28,15 @@ if True:
     for record in stream_reader:
         c += 1
         stream_writer(record)
-        buffer_writer(record)
+        #buffer_writer(record)
         #stream_writer_sam(record)
         #buffer_writer_sam(record)
 
-    buffer_writer.finalize()
-    size = buffer_writer.offset
-    del buffer_writer
-    gc.collect()
-    buffer_out.resize(size)
+    #buffer_writer.finalize()
+    #size = buffer_writer.offset
+    #del buffer_writer
+    #gc.collect()
+    #buffer_out.resize(size)
     #buffer_out_sam.resize(buffer_writer_sam.offset)
 
 else:

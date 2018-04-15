@@ -29,7 +29,7 @@ def read(stream) -> (list, list, int):
     Returned tuple is composed of the following:
     [0] List of dicts indexed by reference id. Dict elements are keyed on bin number and values are arrays of Chunks.
     [1] List of arrays of virtual file offsets for each 16kbp reference interval. Indexed by reference id.
-    [2] Number of unplaced unmapped reads (RNAME *), -1 if not present in BAI.
+    [2] Number of unplaced unmapped reads (RNAME *), None if not present in BAI.
     :param stream: Readable stream containing BAI formatted data.
     :return: 3 element tuple (list, list, int)
     """
@@ -37,7 +37,7 @@ def read(stream) -> (list, list, int):
     n_ref = int.from_bytes(stream.read(4), byteorder='little', signed=True)  # INT32
     bins = [None] * n_ref
     intervals = [None] * n_ref
-    n_no_coor = -1
+    n_no_coor = None
     try:
         for ref in range(n_ref):
             # Read in bins
@@ -69,7 +69,7 @@ def write(stream, bins: list, intervals: list, unaligned: int = None) -> None:
     :param stream: Writable output stream
     :param bins: List of dicts indexed by reference id. Dict elements are keyed on bin number and values are arrays of Chunks.
     :param intervals: List of arrays of virtual file offsets for each 16kbp reference interval. Indexed by reference id.
-    :param unaligned: Number of unplaced unmapped reads (RNAME *)
+    :param unaligned: Number of unplaced unmapped reads (RNAME *) or None to omit from output.
     :return: None
     """
     stream.write(MAGIC)

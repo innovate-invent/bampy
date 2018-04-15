@@ -80,6 +80,7 @@ from .reference import Reference
 from .writer import Writer
 
 # TODO Document everything
+# TODO CRC in trailer
 # TODO bai, csi
 # TODO multithread
 # TODO tools: view, sort,

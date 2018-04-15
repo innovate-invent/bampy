@@ -29,7 +29,7 @@ class PackedSequence:
         """
         return b"".join(SEQUENCE_VALUES[c] for c in self)
 
-    def __getitem__(self, i):
+    def __getitem__(self, i) -> int:
         if isinstance(i, slice):
             start = i.start or 0
             stop = i.stop or len(self)

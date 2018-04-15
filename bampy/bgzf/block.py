@@ -92,6 +92,8 @@ SIZEOF_TRAILER = C.sizeof(Trailer)
 MAX_CDATA_SIZE = MAX_BLOCK_SIZE - len(FIXED_XLEN_HEADER) - 2 - SIZEOF_TRAILER
 
 
+
+
 class Block:
     """
     Represents BGZF/GZIP block.

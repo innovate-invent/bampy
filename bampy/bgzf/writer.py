@@ -61,6 +61,7 @@ class _Writer:
             self.finish_block(False)
             return data_len - state.avail_in
         elif state and state.total_out + data_len > self._cdata_len:
+            # Not enough space left in block so finalize
             self.finish_block()
             return 0
         else:
@@ -78,7 +79,7 @@ class _Writer:
         state = self._state
         if flush and state:
             res, state = zlib.raw_compress(zlib.Z_NULL, mode=zlib.Z_FINISH, state=state)
-            assert res == zlib.Z_STREAM_END, "Failed to flush buffer."
+            assert res == zlib.Z_STREAM_END, "Failed to flush buffer (Code: {}).".format(res)
         if state:
             self._bsize.value += state.total_out  # This heavily relies on the random access ability of the provided buffer
             self.offset += state.total_out
@@ -95,7 +96,7 @@ class _Writer:
         Is only accurate after after setting boundary=True when calling __call__().
         :return: Amount of remaining space in bytes.
         """
-        return MAX_CDATA_SIZE - self._state.total_out - 1 if self._state else 0
+        return (MAX_CDATA_SIZE - self._state.total_out - 1) if self._state else 0
 
     def __call__(self, data):
         """
@@ -119,7 +120,7 @@ class _Writer:
 
 def Writer(output, offset=0) -> _Writer:
     """
-    Helper to provide a unified writer interface.
+    Factory to provide a unified writer interface.
     Resolves if output is randomly accessible and provides the appropriate _Writer implementation.
     :param output: A stream or buffer object.
     :param offset: If output is a buffer, the offset into the buffer to begin writing. Ignored otherwise.
@@ -150,7 +151,7 @@ class StreamWriter(_Writer):
         self._data_buffer = bytearray(MAX_BLOCK_SIZE)
 
     def finish_block(self, flush=True):
-        if not self.offset: return
-        super().finish_block(flush)
-        self._output.write(self._data_buffer[:self.offset])
-        self.offset = 0
+        if self.offset:
+            super().finish_block(flush)
+            self._output.write(self._data_buffer[:self.offset])
+            self.offset = 0

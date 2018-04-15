@@ -18,6 +18,8 @@ from ctypes import util
 
 # Constants taken from zlib.h
 MAX_WBITS = 15
+DEFAULT_COMPRESSION_LEVEL = 9
+DEFAULT_MEM_LEVEL = 8
 ZLIB_VERSION = C.c_char_p(b"1.2.3")
 
 # Allowed flush values; see deflate() and inflate()
@@ -117,7 +119,7 @@ class zState(C.Structure):
 SIZEOF_ZSTATE = C.sizeof(zState)
 
 
-def raw_compress(src=None, dest=None, mode=Z_FINISH, state=None, level=8, wbits=MAX_WBITS, memlevel=8, dictionary=None) -> (int, zState):
+def raw_compress(src=None, dest=None, mode=Z_FINISH, state=None, level=DEFAULT_COMPRESSION_LEVEL, wbits=MAX_WBITS, memlevel=DEFAULT_MEM_LEVEL, dictionary=None) -> (int, zState):
     """
     Wraps zlib.deflate().
     Manages compression state and conversion to ctypes compatible types.
@@ -217,6 +219,25 @@ def raw_decompress(src=None, dest=None, mode=Z_FINISH, state=None, wbits=MAX_WBI
 
 def bound(state, src_len):
     return _zlib.deflateBound(C.byref(state), src_len)
+
+def default_bound(src_len):
+    state = zState()
+    _zlib.deflateInit2_(C.byref(state), DEFAULT_COMPRESSION_LEVEL, Z_DEFLATED, -MAX_WBITS, DEFAULT_MEM_LEVEL, Z_DEFAULT_STRATEGY, ZLIB_VERSION,
+                        SIZEOF_ZSTATE)
+    return bound(state, src_len)
+
+def default_bound_max(dest_len):
+    state = C.byref(zState())
+    _zlib.deflateInit2_(state, DEFAULT_COMPRESSION_LEVEL, Z_DEFLATED, -MAX_WBITS, DEFAULT_MEM_LEVEL, Z_DEFAULT_STRATEGY, ZLIB_VERSION,
+                        SIZEOF_ZSTATE)
+
+    src_len = dest_len
+    current = 0
+
+    while current != dest_len:
+        current = _zlib.deflateBound(state, src_len)
+        src_len = int(src_len * dest_len / current)
+    return src_len
 
 def crc32(src, crc=None):
     """
