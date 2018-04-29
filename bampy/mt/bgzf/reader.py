@@ -1,13 +1,14 @@
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 
-import numba, ctypes as C, io
+import numba, io
 
 from ...bgzf.reader import StreamReader, BufferReader, EmptyBlock, _Reader as __Reader
 from ...bgzf import Block
 from . import zlib
+from bampy.mt import CACHE_JIT
 
-@numba.jit(nopython=True, nogil=True)
+@numba.jit(nopython=True, nogil=True, cache=CACHE_JIT)
 def inflate(data, buffer, offset=0):
     zlib.raw_decompress(data, buffer[offset:])
     return buffer, offset

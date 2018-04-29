@@ -6,9 +6,10 @@ from . import zlib
 
 from bampy.bgzf.writer import SIZEOF_TRAILER, SIZEOF_FIXED_XLEN_HEADER, SIZEOF_UINT16, MAX_BLOCK_SIZE, MAX_DATA_SIZE
 from bampy.bgzf.block import FIXED_XLEN_HEADER, Trailer
+from bampy.mt import CACHE_JIT, THREAD_NAME
 
 
-@numba.jit(nopython=True, nogil=True)
+@numba.jit(nopython=True, nogil=True, cache=CACHE_JIT)
 def deflate(data, buffer, offset=0):
     buffer[offset:offset + SIZEOF_FIXED_XLEN_HEADER] = FIXED_XLEN_HEADER
     offset += SIZEOF_FIXED_XLEN_HEADER
@@ -39,21 +40,23 @@ def deflate(data, buffer, offset=0):
 
 
 class _Writer:
-    def __init__(self, output, thread_pool: ThreadPoolExecutor):
+    def __init__(self, output, thread_pool: ThreadPoolExecutor, _thread_func = deflate):
         self.pool = thread_pool
+        self._thread_func = _thread_func
         self.output = output
         self.queue = deque()
         self.queue_size = 0
         self.results = deque()
 
     def __call__(self, data):
-        self.queue.append(data)
-        self.queue_size += len(data)
-        if self.queue_size >= MAX_DATA_SIZE:
+        size = len(data)
+        if self.queue_size + size >= MAX_DATA_SIZE:
             self.submit()
+        self.queue.append(data)
+        self.queue_size += size
 
     def submit(self):
-        self.results.append(self.pool.submit(deflate, self.queue, bytearray(MAX_BLOCK_SIZE)))  # TODO reuse buffers
+        self.results.append(self.pool.submit(self._thread_func, self.queue, bytearray(MAX_BLOCK_SIZE)))  # TODO reuse buffers
         self.queue = deque()  # TODO reuse queues
         self.queue_size = 0
         self.flush()
@@ -66,7 +69,7 @@ class _Writer:
 
 
 class BufferWriter(_Writer):
-    def __init__(self, output, offset=0, thread_pool: ThreadPoolExecutor = ThreadPoolExecutor(thread_name_prefix='BGZF_WORKER')):
+    def __init__(self, output, offset=0, thread_pool: ThreadPoolExecutor = ThreadPoolExecutor(thread_name_prefix=THREAD_NAME)):
         self.offset = offset
         super().__init__(output, thread_pool)
 
@@ -84,7 +87,7 @@ class StreamWriter(_Writer):
             self.output.write(buffer[:offset])
 
 
-def Writer(output, offset=0, thread_pool: ThreadPoolExecutor = ThreadPoolExecutor(thread_name_prefix='BGZF_WORKER')) -> _Writer:
+def Writer(output, offset=0, thread_pool: ThreadPoolExecutor = ThreadPoolExecutor(thread_name_prefix=THREAD_NAME)) -> _Writer:
     """
     Factory to provide a unified writer interface.
     Resolves if output is randomly accessible and provides the appropriate _Writer implementation.

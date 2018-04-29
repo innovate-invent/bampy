@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from .. import bam, bgzf
 from ..reader import BAMStreamReader, SAMStreamReader, BAMBufferReader, SAMBufferReader, BGZFReader as _BGZFReader, TruncatedFileWarning
 from .bgzf import Reader as bgzf_Reader
+from bampy.mt import THREAD_NAME
 
 import io, ctypes as C
 
@@ -11,7 +12,7 @@ _Last = namedtuple('buffer', 'offset', 'remaining')
 
 
 class BGZFReader(_BGZFReader):
-    def __init__(self, input, offset=0, peek=None, threadpool: ThreadPoolExecutor = ThreadPoolExecutor(thread_name_prefix='BGZF_WORKER')):
+    def __init__(self, input, offset=0, peek=None, threadpool: ThreadPoolExecutor = ThreadPoolExecutor(thread_name_prefix=THREAD_NAME)):
         self.pool = threadpool
         super().__init__(input, offset)
         self._last = _Last(self._bgzfReader.buffer, self._bgzfOffset, self._bgzfReader.remaining)
@@ -52,7 +53,7 @@ class BGZFReader(_BGZFReader):
                 self._bgzfOffset = 0
 
 
-def Reader(input, offset=0, threadpool: ThreadPoolExecutor = ThreadPoolExecutor(thread_name_prefix='BAMPY_WORKER')):
+def Reader(input, offset=0, threadpool: ThreadPoolExecutor = ThreadPoolExecutor(thread_name_prefix=THREAD_NAME)):
     """
     Convenience interface for reading alignment records from BGZF/BAM/SAM files.
     :param input: Stream or buffer containing alignment data.

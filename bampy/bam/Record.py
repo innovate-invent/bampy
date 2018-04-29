@@ -14,82 +14,6 @@ SIZEOF_INT32 = C.sizeof(C.c_int32)
 CSTRING_TERMINATOR = (C.c_ubyte * 1)() # Represents null byte used to terminate the record name field
 
 
-class _TagSet:
-    """
-    Alternative implementation to a dict to store tags that maintains its associated records block_size when a tag is resized, added, or removed.
-    This uses a list rather than a dict assuming that records do not contain numerous tags.
-    This is largely due to the fact that numba does not support dict.
-
-    Do not instantiate instances directly, the record maintains its own instance.
-    """
-    __slots__ = '_size', '_record', '_tags'
-
-    def __init__(self, record, buffer, offset=0):
-        tags = []
-        total_size = 0
-        while offset < len(buffer):
-            tag = Tag(buffer, offset)
-            size = tag.size()
-            if size:
-                tags.append(tag)
-                total_size += size
-            else:
-                raise ValueError("Unexpected buffer size.")
-            offset += size
-        self._record = record
-        self._tags = tags
-        self._size = total_size
-
-    def __getitem__(self, item):
-        for tag in self._tags:
-            if tag.tag == item:
-                return tag
-        else:
-            raise IndexError("{} tag not defined.".format(item))
-
-    def update(self, value):
-        size = value.size()
-        for i, tag in enumerate(self._tags):
-            if tag.tag == value.tag:
-                self._tags[i] = value
-                delta = size - tag.size()
-                self.size += delta
-                self._record._header.block_size += delta  # TODO This isn't ideal modifying the record outside its context
-                return
-        else:
-            self._tags.append(value)
-            self.size += size
-            self._record._header.block_size += size  # TODO This isn't ideal modifying the record outside its context
-
-    def __delitem__(self, key):
-        for i, tag in enumerate(self._tags):
-            if tag.tag == key:
-                self._tags.pop(i)
-                size = tag.size()
-                self._size -= size
-                self._record._header.block_size -= size  # TODO This isn't ideal modifying the record outside its context
-
-    def pack(self):
-        tags = self._tags
-        if isinstance(tags, dict):
-            tag_buffer = bytearray()
-            for tag in self.tags.values():
-                tag_buffer += tag.pack()
-            self._tags = tag_buffer
-
-    def size(self):
-        return self._size
-
-    def __len__(self):
-        return len(self._tags)
-
-    def copy(self):
-        new = _TagSet.__new__(_TagSet)
-        new._record = self._record
-        new._size = self._size
-        new._tags = [tag.copy() for tag in self._tags]
-
-
 class RecordFlags(IntFlag):
     """
     Represents flag bit values. Can be OR'd (|) together or AND (&) to determine flag setting.
@@ -139,7 +63,7 @@ class Record:
     Represents and manages record data in memory.
     Record data is not necessarily stored in BAM format in memory.
     """
-    __slots__ = '_header', '_name', '_cigar', '_sequence', '_quality_scores', '_tags', '_reference', '_next_reference', '_buffer'
+    __slots__ = '_header', '_name', '_cigar', '_sequence', '_quality_scores', '_tags', '_reference', '_next_reference', '_buffer', '_tags_offset'
 
     def __init__(self, header=RecordHeader(), name=b"*", cigar=[], sequence=bytearray(), quality_scores=bytearray(), tags=bytearray(),
                  references=None, _buffer=None):
@@ -150,6 +74,7 @@ class Record:
         self._sequence = sequence
         self._quality_scores = quality_scores
         self._tags = tags
+        self._tags_offset = 0
         self._reference = None if not references or header.reference_id == -1 else references[header.reference_id]
         self._next_reference = None if not references or header.next_reference_id == -1 else references[header.next_reference_id]
         self._buffer = _buffer
@@ -203,15 +128,55 @@ class Record:
         self._header.block_size += len(value) - len(self._quality_scores)
         self._quality_scores = value
 
-    @property
-    def tags(self):
-        if not isinstance(self._tags, _TagSet):
-            self._tags = _TagSet(self, self._tags)
-        return self._tags
+    def _unpack_tags(self):
+        if not self._tags_offset:
+            self._data_from_buffer()
+        # Parse tag data
+        tags = []
+        buffer = self._buffer
+        offset = self._tags_offset
+        buffer_len = len(buffer)
+        while 0 < offset < buffer_len:
+            tag = Tag(buffer, offset)
+            size = tag.size()
+            if size:
+                tags.append(tag)
+            else:
+                raise ValueError("Unexpected buffer size.")
+            offset += size
+        self._tags = tags
 
-    @tags.setter
-    def tags(self, value):
-        self._tags = value
+    def get_tag(self, name):
+        if self._tags is None:
+            self._unpack_tags()
+
+        for tag in self._tags:
+            if tag.tag == name:
+                return tag
+        else:
+            raise IndexError("{} tag not defined.".format(name))
+
+    def set_tag(self, value):
+        if self._tags is None:
+            self._unpack_tags()
+        size = value.size()
+        for i, tag in enumerate(self._tags):
+            if tag.tag == value.tag:
+                self._tags[i] = value
+                self._header.block_size += size - tag.size()
+                return
+        else:
+            self._tags.append(value)
+            self._header.block_size += size
+
+    def del_tag(self, name):
+        if self._tags is None:
+            self._unpack_tags()
+        for i, tag in enumerate(self._tags):
+            if tag.tag == name:
+                self._tags.pop(i)
+                size = tag.size()
+                self._header.block_size -= size
 
     @property
     def position(self):
@@ -290,6 +255,7 @@ class Record:
         """
         header = self._header
         buffer = self._buffer
+        assert buffer, "No provided record data."
         offset = 0
         # Name
         name = (C.c_char * (header.name_length - 1))  # Exclude Null
@@ -313,7 +279,9 @@ class Record:
         offset += header.sequence_length
         # Tags
         if offset < header.block_size - SIZEOF_RECORDHEADER:
-            tags = (C.c_ubyte * (header.block_size + SIZEOF_UINT32 - offset - SIZEOF_RECORDHEADER)).from_buffer(buffer, offset)
+            tags = None
+            self._tags_offset = offset
+            #tags = (C.c_ubyte * (header.block_size + SIZEOF_UINT32 - offset - SIZEOF_RECORDHEADER)).from_buffer(buffer, offset)
         else:
             tags = bytes()
         self._name, self._cigar, self._sequence, self._quality_scores, self._tags = name, cigar, sequence, quality_scores, tags
@@ -383,7 +351,7 @@ class Record:
         header = RecordHeader.from_buffer(header)
         data_len = header.block_size - SIZEOF_RECORDHEADER + SIZEOF_INT32
         data = bytearray(data_len)
-        assert stream.readinto(data) == data_len
+        assert stream.readinto(data) == data_len, "Unexpected data length."
         return Record(header, None, None, None, None, None, references, data)
 
     def to_stream(self, stream) -> None:
@@ -412,11 +380,15 @@ class Record:
         :param update: Set to True to call update().
         :return: List containing in order: record header, name, name null terminator, cigar buffer, sequence buffer, quality scores, tags.
         """
-        self.sequence = PackedSequence.pack(self.sequence)
-        self.cigar = PackedCIGAR.pack(self.cigar)
-        if isinstance(self._tags, _TagSet):
-            self._tags = self._tags.pack()
-        return [self._header, self.name, CSTRING_TERMINATOR, self.cigar.buffer, self.sequence.buffer, self.quality_scores, self._tags]
+        if not self._name:
+            self._data_from_buffer()
+        self._sequence = PackedSequence.pack(self._sequence)
+        self._cigar = PackedCIGAR.pack(self._cigar)
+        tag_buffer = bytearray()
+        if self._tags:
+            for tag in self._tags:
+                tag_buffer += tag.pack()
+        return [self._header, self._name, CSTRING_TERMINATOR, self._cigar.buffer, self._sequence.buffer, self._quality_scores, tag_buffer]
 
     def unpack(self) -> None:
         """
@@ -424,8 +396,8 @@ class Record:
         See PackedCIGAR.unpack() and PackedSequence.unpack().
         :return: None
         """
-        self.sequence = self.sequence.unpack()
-        self.cigar = self.cigar.unpack()
+        self._sequence = self._sequence.unpack()
+        self._cigar = self._cigar.unpack()
         # TODO tags?
 
     @staticmethod
@@ -521,18 +493,15 @@ class Record:
         """
         new = Record.__new__(Record)
         new._header = RecordHeader.from_buffer_copy(self._header)
-        new.name = bytearray(self.name)
-        new.cigar = self.cigar.copy() if isinstance(self.cigar, PackedCIGAR) else bytearray(self.cigar)
-        new.sequence = self.sequence.copy() if isinstance(self.sequence) else bytearray(self.sequence)
-        new.quality_scores = bytearray(self.quality_scores)
+        new._name = bytearray(self.name)
+        new._cigar = self.cigar.copy() if isinstance(self.cigar, PackedCIGAR) else bytearray(self.cigar)
+        new._sequence = self.sequence.copy() if isinstance(self.sequence) else bytearray(self.sequence)
+        new._quality_scores = bytearray(self.quality_scores)
         tags = self._tags
-        if isinstance(tags, _TagSet):
-            new.tags = {}
-            for value in self.tags.values():
-                tag = value.copy()
-                new.tags[tag.tag] = tag
+        if tags:
+            new.tags = self._tags[:]
         else:
-            new.tags = tags[:]
-        new.reference = self.reference
-        new.next_reference = self.next_reference
+            new._tags = None
+        new._reference = self.reference
+        new._next_reference = self.next_reference
         return new

@@ -4,9 +4,8 @@ from . import bam, bgzf, sam
 
 
 class Writer:
-    def __init__(self, output, references=()):
+    def __init__(self, output):
         self._output = output
-        self.references = references
 
     @staticmethod
     def sam(output, offset=0, sam_header=b'', references=()) -> 'Writer':
@@ -21,24 +20,40 @@ class Writer:
         sam_header = sam.pack_header(sam_header, references)
         if isinstance(output, (io.RawIOBase, io.BufferedIOBase)):
             output.write(sam_header)
-            return SAMStreamWriter(output, references)
+            return SAMStreamWriter(output)
         else:
             sam_len = len(sam_header)
             output[offset: offset + sam_len] = sam_header
-            return SAMBufferWriter(output, offset + sam_len, references)
+            return SAMBufferWriter(output, offset + sam_len)
 
     @staticmethod
     def bam(output, offset=0, sam_header=b'', references=()) -> 'Writer':
+        """
+        TODO
+        :param output:
+        :param offset:
+        :param sam_header:
+        :param references:
+        :return:
+        """
         sam_header = sam.pack_header(sam_header, references)
         if isinstance(output, (io.RawIOBase, io.BufferedIOBase)):
             bam.header_to_stream(output, sam_header, references)
-            return BAMStreamWriter(output, references)
+            return BAMStreamWriter(output)
         else:
-            return BAMBufferWriter(output, bam.header_to_buffer(output, offset, sam_header, references), references)
+            return BAMBufferWriter(output, bam.header_to_buffer(output, offset, sam_header, references))
 
     @staticmethod
     def bgzf(output, offset=0, sam_header=b'', references=()):
-        writer = BGZFWriter(output, offset, references)
+        """
+        TODO
+        :param output:
+        :param offset:
+        :param sam_header:
+        :param references:
+        :return:
+        """
+        writer = BGZFWriter(output, offset)
         writer._output(bam.pack_header(sam_header, references))
         writer._output.finish_block()
         return writer
@@ -48,14 +63,14 @@ class Writer:
 
 
 class StreamWriter(Writer):
-    def __init__(self, output, references):
-        super().__init__(output, references)
+    def __init__(self, output):
+        super().__init__(output)
 
 
 class BufferWriter(Writer):
-    def __init__(self, output, offset=0, references=()):
-        super().__init__(output, references)
-        self.offset = offset
+    def __init__(self, output, offset=0):
+        super().__init__(output)
+        self._offset = offset
 
 
 class SAMStreamWriter(Writer):
@@ -83,8 +98,8 @@ class BAMBufferWriter(BufferWriter):
 
 
 class BGZFWriter(Writer):
-    def __init__(self, output, offset=0, references=()):
-        super().__init__(bgzf.Writer(output, offset), references)
+    def __init__(self, output, offset=0):
+        super().__init__(bgzf.Writer(output, offset))
 
     def __call__(self, record):
         data = record.pack()
