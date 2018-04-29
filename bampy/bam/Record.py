@@ -63,22 +63,143 @@ class Record:
     Represents and manages record data in memory.
     Record data is not necessarily stored in BAM format in memory.
     """
-    __slots__ = '_header', 'name', 'cigar', 'sequence', 'quality_scores', 'tags', 'reference', 'next_reference'
+    __slots__ = '_header', '_name', '_cigar', '_sequence', '_quality_scores', '_tags', '_reference', '_next_reference', '_buffer'
 
     def __init__(self, header=RecordHeader(), name=b"*", cigar=[], sequence=bytearray(), quality_scores=bytearray(), tags=bytearray(),
-                 references=None):
+                 references=None, _buffer=None):
         self._header = header
         # TODO init header to defaults
-        self.name = name
-        self.cigar = cigar
-        self.sequence = sequence
-        self.quality_scores = quality_scores
-        self.tags = tags
-        self.reference = None if not references or header.reference_id == -1 else references[header.reference_id]
-        self.next_reference = None if not references or header.next_reference_id == -1 else references[header.next_reference_id]
+        self._name = name
+        self._cigar = cigar
+        self._sequence = sequence
+        self._quality_scores = quality_scores
+        self._tags = tags
+        self._reference = None if not references or header.reference_id == -1 else references[header.reference_id]
+        self._next_reference = None if not references or header.next_reference_id == -1 else references[header.next_reference_id]
+        self._buffer = _buffer
 
-    @staticmethod
-    def _data_from_buffer(header, buffer, offset=0) -> (C.Array, PackedCIGAR, PackedSequence, C.Array, C.Array):
+    @property
+    def name(self):
+        if self._name is None:
+            self._data_from_buffer()
+        return self._name
+
+    @name.setter
+    def name(self, value):
+        self._name = value
+        self._header.name_length = len(value) + 1
+
+    @property
+    def cigar(self):
+        if self._cigar is None:
+            self._data_from_buffer()
+        return self._cigar
+
+    @cigar.setter
+    def cigar(self, value):
+        self._cigar = value
+        self._header.cigar_length = len(value)
+        self._update_bin()
+
+    @property
+    def sequence(self):
+        if self._sequence is None:
+            self._data_from_buffer()
+        return self._sequence
+
+    @sequence.setter
+    def sequence(self, value):
+        self._sequence = value
+        self._header.sequence_length = len(value)
+
+    @property
+    def quality_scores(self):
+        if self._quality_scores is None:
+            self._data_from_buffer()
+        return self._quality_scores
+
+    @quality_scores.setter
+    def quality_scores(self, value):
+        self._quality_scores = value
+
+    @property
+    def tags(self):
+        if not isinstance(self._tags, dict):
+            self._unpack_tags()
+        return self._tags
+
+    @tags.setter
+    def tags(self, value):
+        self._tags = value
+
+    @property
+    def position(self):
+        return self._header.block_size
+
+    @position.setter
+    def position(self, value):
+        self._header.position = value
+        self._update_bin()
+
+    @property
+    def reference(self):
+        return self._reference
+
+    @reference.setter
+    def reference(self, value):
+        self._reference = value
+        self._header.reference_id = value.index
+
+    @property
+    def next_reference(self):
+        return self._next_reference
+
+    @next_reference.setter
+    def next_reference(self, value):
+        self._next_reference = value
+        self._header.next_reference_id = value.index
+
+    @property
+    def bin(self):
+        return self._header.bin
+
+    @bin.setter
+    def bin(self, value):
+        self._header.bin = value
+
+    @property
+    def mapping_quality(self):
+        return self._header.mapping_quality
+
+    @mapping_quality.setter
+    def mapping_quality(self, value):
+        self._header.mapping_quality = value
+
+    @property
+    def flags(self):
+        return RecordFlags(self._header.flag)
+
+    @flags.setter
+    def flags(self, value):
+        self._header.flag = value
+
+    @property
+    def next_position(self):
+        return self._header.next_position
+
+    @next_position.setter
+    def next_position(self, value):
+        self._header.next_position = value
+
+    @property
+    def template_length(self):
+        return self._header.template_length
+
+    @template_length.setter
+    def template_length(self, value):
+        self._header.template_length = value
+
+    def _data_from_buffer(self) -> None:
         """
         Maps out the name, cigar, sequence, quality scores, and tag data in memory.
         :param header: The RecordHeader instance that describes the data.
@@ -86,12 +207,14 @@ class Record:
         :param offset: The offset into the buffer that should point at the first byte of the name data.
         :return: Tuple containing in order the name, cigar, sequence, quality scores, and tags.
         """
-        start = offset
+        header = self._header
+        buffer = self._buffer
+        offset = 0
         # Name
         name = (C.c_char * (header.name_length - 1))  # Exclude Null
         name.__bytes__ = _to_bytes
         name.__repr__ = _to_str
-        name = name.from_buffer(buffer, offset)
+        name = name.from_buffer(self._buffer, offset)
         offset += header.name_length
         # Cigar
         cigar = (C.c_uint32 * header.cigar_length).from_buffer(buffer, offset)
@@ -108,11 +231,12 @@ class Record:
         quality_scores = quality_scores.from_buffer(buffer, offset)
         offset += header.sequence_length
         # Tags
-        if offset < start + header.block_size - SIZEOF_RECORDHEADER:
-            tags = (C.c_ubyte * (header.block_size + SIZEOF_UINT32 - offset + start - SIZEOF_RECORDHEADER)).from_buffer(buffer, offset)
+        if offset < header.block_size - SIZEOF_RECORDHEADER:
+            tags = (C.c_ubyte * (header.block_size + SIZEOF_UINT32 - offset - SIZEOF_RECORDHEADER)).from_buffer(buffer, offset)
         else:
             tags = {}
-        return name, cigar, sequence, quality_scores, tags
+        self._name, self._cigar, self._sequence, self._quality_scores, self._tags = name, cigar, sequence, quality_scores, tags
+        self._buffer = None
 
     @staticmethod
     def from_buffer(buffer, offset=0, references=[]) -> 'Record':
@@ -127,7 +251,7 @@ class Record:
         try:
             header = RecordHeader.from_buffer(buffer, offset)
             offset += SIZEOF_RECORDHEADER
-            return Record(header, *Record._data_from_buffer(header, buffer, offset), references)
+            return Record(header, None, None, None, None, None, references, buffer[offset:])
         except ValueError:
             raise BufferUnderflow()
 
@@ -142,18 +266,24 @@ class Record:
         buffer = memoryview(buffer)
         self.pack()
         new = Record.__new__(Record)
+        buffer_ptr = C.addressof(buffer)
         new._header = RecordHeader.from_buffer(buffer, offset)
-        C.memmove(C.addressof(new._header), C.addressof(self._header), SIZEOF_RECORDHEADER)
-        offset += SIZEOF_RECORDHEADER
-        new.name, new.cigar, new.sequence, new.quality_scores, new_tags = Record._data_from_buffer(new._header, buffer, offset)
-        new.tags = new_tags
-        # TODO reduce to one memmove of entire block if contiguous
-        C.memmove(new.name, self.name, len(self.name))  # Buffer initialised to null so should leave terminating null
-        C.memmove(new.cigar.buffer, self.cigar.buffer, len(self.cigar.buffer))
-        C.memmove(new.sequence.buffer, self.sequence.buffer, len(self.sequence.buffer))
-        C.memmove(new.quality_scores, self.quality_scores, len(self.quality_scores))
-        tags = super().__getattribute__('tags')
-        C.memmove(new_tags, tags, len(tags))
+        C.memmove(buffer_ptr, C.addressof(self._header), SIZEOF_RECORDHEADER)
+        buffer_ptr += SIZEOF_RECORDHEADER
+        # TODO reduce to one memmove of entire block if contiguous (how to determine if contiguous?)
+        length = len(self.name)
+        C.memmove(buffer_ptr, self.name, length)  # Buffer initialised to null so will have terminating null after copy
+        buffer_ptr += length
+        length = len(self.cigar.buffer)
+        C.memmove(buffer_ptr, self.cigar.buffer, length)
+        buffer_ptr += length
+        length = len(self.sequence.buffer)
+        C.memmove(buffer_ptr, self.sequence.buffer, length)
+        buffer_ptr += length
+        length = len(self.quality_scores)
+        C.memmove(buffer_ptr, self.quality_scores, length)
+        buffer_ptr += length
+        C.memmove(buffer_ptr, self._tags, len(self._tags))
         new.reference = self.reference
         new.next_reference = self.next_reference
         return new
@@ -173,7 +303,7 @@ class Record:
         data_len = header.block_size - SIZEOF_RECORDHEADER + SIZEOF_INT32
         data = bytearray(data_len)
         assert stream.readinto(data) == data_len
-        return Record(header, *Record._data_from_buffer(header, data), references)
+        return Record(header, None, None, None, None, None, references, data)
 
     def to_stream(self, stream) -> None:
         """
@@ -185,47 +315,35 @@ class Record:
         for datum in data:
             stream.write(datum)
 
-    def __getattribute__(self, item):
-        attr = super().__getattribute__(item)
-        if item == "tags" and not isinstance(attr, dict):
-            # TODO This could be optimised by assuming that the tags are sorted appropriately and only unpacking up to the requested tag
+    def _pack_tags(self):
+        tags = self._tags
+        if isinstance(tags, dict):
+            tag_buffer = bytearray()
+            for tag in self.tags.values():
+                tag_buffer += tag.pack()
+            self.tags = tag_buffer
+            self._tags = tag_buffer
+
+    def _unpack_tags(self):
+        if not isinstance(self._tags, dict):
             offset = 0
             tags = {}
-            while offset < len(attr):
-                tag = Tag(attr, offset)
+            while offset < len(self._tags):
+                tag = Tag(self._tags, offset)
                 if tag.size():
                     tags[tag.tag] = tag
                 else:
                     raise ValueError("Unexpected buffer size.")
                 offset += tag.size()
-            self.tags = tags
-            return tags
+            self._tags = tags
 
-        return attr
-
-    def __getattr__(self, item):
-        try:
-            return getattr(self._header, item)
-        except AttributeError:
-            if item == 'flags':
-                self.flags = RecordFlags(self._header.flag)
-                return self.flags
-            else:
-                raise
-
-    def update(self) -> None:
+    def _update_bin(self) -> None:
         """
-        Updates the record header.
+        Updates the bin field in the record header.
         Calculates the bin by calling reg2bin.
-        Updates the reference id, next reference id, name length, cigar length, and sequence length.
         :return: None
         """
         self._header.bin = reg2bin(self._header.position, self._header.position + alignment_length(self.cigar))
-        self._header.reference_id = self.reference.index
-        self._header.next_reference_id = self.next_reference.index
-        self._header.name_length = len(self.name) + 1
-        self._header.cigar_length = len(self.cigar)
-        self._header.sequence_length = len(self.sequence)
 
     def pack(self, update=False) -> [RecordHeader, C.Array, C.Array, bytearray, bytearray, bytearray, bytearray]:
         """
@@ -239,14 +357,8 @@ class Record:
         self.cigar = PackedCIGAR.pack(self.cigar)
         if update:
             self.update()
-        tags = super().__getattribute__('tags')
-        if isinstance(tags, dict):
-            tag_buffer = bytearray()
-            for tag in self.tags.values():
-                tag_buffer += tag.pack()
-            self.tags = tag_buffer
-            tags = tag_buffer
-        return [self._header, self.name, CSTRING_TERMINATOR, self.cigar.buffer, self.sequence.buffer, self.quality_scores, tags]
+        self._pack_tags()
+        return [self._header, self.name, CSTRING_TERMINATOR, self.cigar.buffer, self.sequence.buffer, self.quality_scores, self._tags]
 
     def unpack(self) -> None:
         """
