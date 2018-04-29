@@ -1,4 +1,4 @@
-import ctypes as C, numba
+import numba
 import bampy.bgzf.zlib as zlib
 
 raw_decompress = numba.jit(nopython=True, nogil=True)(zlib.raw_decompress)

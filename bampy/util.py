@@ -2,6 +2,8 @@ import mmap
 import os
 import stat
 
+def is_pipe(path):
+    return stat.S_ISFIFO(os.stat(path).st_mode)
 
 def open_buffer(path, mode=os.O_RDWR | os.O_CREAT, size=0) -> mmap:
     """
@@ -14,7 +16,8 @@ def open_buffer(path, mode=os.O_RDWR | os.O_CREAT, size=0) -> mmap:
     """
     fh = os.open(path, mode)
     stat_result = os.stat(fh)
-    assert not stat.S_ISFIFO(stat_result.st_mode), "Can not open pipe as buffer."
+    if not stat.S_ISFIFO(stat_result.st_mode):
+        raise FileNotFoundError("Can not open pipe as buffer.")
     if size:
         os.truncate(fh, size)
     else:

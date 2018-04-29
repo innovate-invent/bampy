@@ -2,9 +2,10 @@ import ctypes as C
 from enum import IntFlag
 
 from .util import InvalidBGZF, MAX_BLOCK_SIZE
+from . import zlib
 
 SIZEOF_UINT16 = C.sizeof(C.c_uint16)
-
+FIXED_XLEN_HEADER = b'\x1f\x8b\x08\x04\x00\x00\x00\x00\x00\xff\x06\x00\x42\x43\x02\x00'
 
 # Taken from gzip spec
 class BlockFlags(IntFlag):
@@ -74,8 +75,6 @@ class BSIZE(SubField):
 
 SIZEOF_BSIZE = C.sizeof(BSIZE)
 
-FIXED_XLEN_HEADER = b'\x1f\x8b\x08\x04\x00\x00\x00\x00\x00\xff\x06\x00\x42\x43\x02\x00'
-
 
 class Trailer(C.LittleEndianStructure):
     """
@@ -90,15 +89,13 @@ class Trailer(C.LittleEndianStructure):
 
 SIZEOF_TRAILER = C.sizeof(Trailer)
 MAX_CDATA_SIZE = MAX_BLOCK_SIZE - len(FIXED_XLEN_HEADER) - 2 - SIZEOF_TRAILER
-
-
-
+MAX_DATA_SIZE = zlib.default_bound_max(MAX_CDATA_SIZE)
 
 class Block:
     """
     Represents BGZF/GZIP block.
     """
-    __slots__ = '_header', '_trailer', 'extra_fields', 'size', 'flags'
+    __slots__ = '_header', '_trailer', 'extra_fields', 'size'
 
     def __init__(self, header: Header, extra_fields: dict, trailer: Trailer):
         """
@@ -108,26 +105,81 @@ class Block:
         :param trailer: Trailer object instance.
         """
         self._header = header
-        self.flags = BlockFlags(header.flag)
-        self.extra_fields = extra_fields
-        self.size = Block._getSize(extra_fields)
+        self._extra_fields = extra_fields
+        self._size = Block._getSize(extra_fields)
         self._trailer = trailer
 
-    def __getattr__(self, item):
-        # TODO @properties might be faster
-        if item not in ('_header', '_trailer'):
-            try:
-                return getattr(self._header, item)
-            except AttributeError:
-                return getattr(self._trailer, item)
+    @property
+    def id(self):
+        return (self._header.id1, self._header.id2)
 
-    def __setattr__(self, key, value):
-        if hasattr(self._header, key):
-            setattr(self._header, key, value)
-        elif hasattr(self._trailer, key):
-            setattr(self._trailer, key, value)
-        else:
-            super().__setattr__(key, value)
+    @id.setter
+    def id(self, value):
+        self._header.id1, self._header.id2 = value
+
+    @property
+    def compression_method(self):
+        return self._header.compression_method
+
+    @compression_method.setter
+    def compression_method(self, value):
+        self._header.compression_method = value
+
+    @property
+    def flags(self):
+        return BlockFlags(self._header.flag)
+
+    @flags.setter
+    def flags(self, value):
+        self._header.flag = value
+
+    @property
+    def modification_time(self):
+        return self._header.id1
+
+    @modification_time.setter
+    def modification_time(self, value):
+        self._header.modification_time = value
+
+    @property
+    def extra_flags(self):
+        return self._header.extra_flags
+
+    @extra_flags.setter
+    def extra_flags(self, value):
+        self._header.extra_flags = value
+
+    @property
+    def os(self):
+        return self._header.os
+
+    @os.setter
+    def os(self, value):
+        self._header.os = value
+
+    @property
+    def extra_length(self):
+        return self._header.extra_length
+
+    @extra_length.setter
+    def extra_flags(self, value):
+        self._header.extra_length = value
+
+    @property
+    def CRC32(self):
+        return self._footer.CRC32
+
+    @CRC32.setter
+    def CRC32(self, value):
+        self._header.CRC32 = value
+
+    @property
+    def uncompressed_size(self):
+        return self._footer.uncompressed_size
+
+    @uncompressed_size.setter
+    def uncompressed_size(self, value):
+        self._header.uncompressed_size = value
 
     def __len__(self):
         return self.size

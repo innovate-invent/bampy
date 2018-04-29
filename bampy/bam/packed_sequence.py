@@ -57,7 +57,6 @@ class PackedSequence:
                     else:
                         self.buffer[a // 2] = (self.buffer[a // 2] & 0b00001111) | (b << 4)
             else:
-                # TODO make sequence mutable, this can only work for new files
                 raise ValueError("Slice assignment can not change length of sequence.")
         else:
             if i % 2:

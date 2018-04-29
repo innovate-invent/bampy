@@ -4,7 +4,7 @@ import ctypes as C, io, numba
 
 from . import zlib
 
-from bampy.bgzf.writer import SIZEOF_TRAILER, SIZEOF_FIXED_XLEN_HEADER, SIZEOF_UINT16, MAX_CDATA_SIZE, MAX_BLOCK_SIZE
+from bampy.bgzf.writer import SIZEOF_TRAILER, SIZEOF_FIXED_XLEN_HEADER, SIZEOF_UINT16, MAX_BLOCK_SIZE, MAX_DATA_SIZE
 from bampy.bgzf.block import FIXED_XLEN_HEADER, Trailer
 
 
@@ -49,11 +49,14 @@ class _Writer:
     def __call__(self, data):
         self.queue.append(data)
         self.queue_size += len(data)
-        if self.queue_size >= MAX_CDATA_SIZE: #TODO calculate actual max
-            self.results.append(self.pool.submit(deflate, self.queue, bytearray(MAX_BLOCK_SIZE))) #TODO reuse buffers
-            self.queue = deque()
-            self.queue_size = 0
-            self.flush()
+        if self.queue_size >= MAX_DATA_SIZE:
+            self.submit()
+
+    def submit(self):
+        self.results.append(self.pool.submit(deflate, self.queue, bytearray(MAX_BLOCK_SIZE)))  # TODO reuse buffers
+        self.queue = deque()  # TODO reuse queues
+        self.queue_size = 0
+        self.flush()
 
     def flush(self, wait=False):
         raise NotImplementedError()

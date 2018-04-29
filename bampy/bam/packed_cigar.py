@@ -46,7 +46,6 @@ class PackedCIGAR:
                 for a, b in zip(range(start, stop, step), value):
                     self.buffer[a] = C.c_uint32.__ctype_le__(b)
             else:
-                # TODO make cigar mutable, this can only work for new files
                 raise ValueError("Slice assignment can not change length of sequence.")
         else:
             self.buffer[i] = value[0] << 4 | value[1]

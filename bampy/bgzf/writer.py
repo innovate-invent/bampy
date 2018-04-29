@@ -6,7 +6,7 @@ import ctypes as C
 import io
 
 from . import block, zlib
-from .block import MAX_CDATA_SIZE
+from .block import MAX_CDATA_SIZE, MAX_DATA_SIZE
 from .util import MAX_BLOCK_SIZE
 
 SIZEOF_TRAILER = C.sizeof(block.Trailer)
