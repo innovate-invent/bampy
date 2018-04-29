@@ -1,11 +1,12 @@
 import ctypes as C
 from enum import IntFlag
 
-from .util import InvalidBGZF, MAX_BLOCK_SIZE
 from . import zlib
+from .util import InvalidBGZF, MAX_BLOCK_SIZE
 
 SIZEOF_UINT16 = C.sizeof(C.c_uint16)
 FIXED_XLEN_HEADER = b'\x1f\x8b\x08\x04\x00\x00\x00\x00\x00\xff\x06\x00\x42\x43\x02\x00'
+
 
 # Taken from gzip spec
 class BlockFlags(IntFlag):
@@ -90,6 +91,7 @@ class Trailer(C.LittleEndianStructure):
 SIZEOF_TRAILER = C.sizeof(Trailer)
 MAX_CDATA_SIZE = MAX_BLOCK_SIZE - len(FIXED_XLEN_HEADER) - 2 - SIZEOF_TRAILER
 MAX_DATA_SIZE = zlib.default_bound_max(MAX_CDATA_SIZE)
+
 
 class Block:
     """

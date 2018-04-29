@@ -14,11 +14,14 @@ class TruncatedFileWarning(UserWarning):
     """
     pass
 
+
 class SAMHeader(tuple):
     pass
 
+
 class BAMHeader(tuple):
     pass
+
 
 def discover_stream(stream):
     """
@@ -71,6 +74,7 @@ class _Reader:
     Base class for different stream/buffer bgzf/bam/sam implementations.
     Provides Iterable interface to read in records.
     """
+
     def __init__(self, input):
         self._input = input
 
@@ -85,6 +89,7 @@ class StreamReader(_Reader):
     """
     Base class for reading from a stream
     """
+
     def __init__(self, input):
         super().__init__(input)
 
@@ -93,6 +98,7 @@ class BufferReader(_Reader):
     """
     Base class for reading from a buffer
     """
+
     def __init__(self, input, offset=0):
         super().__init__(input)
         self.offset = offset
@@ -106,6 +112,7 @@ class BGZFReader(_Reader):
     """
     Reads from BGZF stream or buffer and provides Iterable interface that emits Record instances.
     """
+
     def __init__(self, source, offset=0, peek=None):
         if not isinstance(source, (io.RawIOBase, io.BufferedIOBase)) and source[-bgzf.SIZEOF_EMPTY_BLOCK:] != bgzf.EMPTY_BLOCK:
             warnings.warn("Missing EOF marker, data is possibly truncated.", TruncatedFileWarning)

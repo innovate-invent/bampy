@@ -73,12 +73,11 @@ For more:
     >> help(bampy.util) for more information on misc utilities provided.
 """
 
-from bampy.bam import Record, OP_CODES, SEQUENCE_VALUES, CONSUMES_QUERY, CONSUMES_REFERENCE
+from bampy.bam import CONSUMES_QUERY, CONSUMES_REFERENCE, OP_CODES, Record, SEQUENCE_VALUES
 from .__version import __version__
 from .reader import Reader, discover_stream
 from .reference import Reference
 from .writer import Writer
-
 
 # TODO Document everything
 # TODO CRC in trailer

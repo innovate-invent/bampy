@@ -1,12 +1,15 @@
+import io
 from concurrent.futures import ThreadPoolExecutor
-import numba, io
 from queue import deque
 
-from ..writer import Writer as _Writer, BGZFWriter as _BGZFWriter
-from .. import bam
-from .bgzf.writer import deflate
+import numba
+
+from bampy.mt import CACHE_JIT, THREAD_NAME
 from . import bgzf
-from bampy.mt import THREAD_NAME, CACHE_JIT
+from .bgzf.writer import deflate
+from .. import bam
+from ..writer import BGZFWriter as _BGZFWriter, Writer as _Writer
+
 
 @numba.jit(nopython=True, nogil=True, cache=CACHE_JIT)
 def compile(queue, buffer, offset=0):
@@ -44,4 +47,3 @@ class Writer(_Writer):
         writer._output(bam.pack_header(sam_header, references))
         writer._output.finish_block()
         return writer
-

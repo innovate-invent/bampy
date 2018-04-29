@@ -2,6 +2,7 @@ import ctypes as C
 
 MAGIC = b'BAI\1'
 
+
 class Chunk(C.LittleEndianStructure):
     _pack_ = 1
     _fields_ = [
@@ -46,7 +47,7 @@ def read(stream) -> (list, list, int):
             while n_bin > 0:
                 bin = int.from_bytes(stream.read(4), byteorder='little', signed=False)  # UINT32
                 n_chunk = int.from_bytes(stream.read(4), byteorder='little', signed=True)  # INT32
-                if bin == 37450: # Detect pseudo-chunks
+                if bin == 37450:  # Detect pseudo-chunks
                     bins[ref][bin] = PseudoChunk.from_buffer(stream.read(SIZEOF_CHUNK * n_chunk))
                     n_bin -= 2
                 else:
@@ -81,7 +82,7 @@ def write(stream, bins: list, intervals: list, unaligned: int = None) -> None:
         # Write bins
         # n_bin
         stream.write(len(bins[ref]).to_bytes(4, 'little', True))
-        for bin, chunks in bins[ref].items(): #type: (int, Chunk)
+        for bin, chunks in bins[ref].items():  # type: (int, Chunk)
             # bin
             stream.write(bin.to_bytes(4, 'little', False))
             # n_chunk

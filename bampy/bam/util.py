@@ -1,6 +1,6 @@
 import ctypes as C
-from typing import Tuple
 from enum import IntEnum
+from typing import Tuple
 
 from .. import sam
 from ..reference import Reference
@@ -16,18 +16,20 @@ OP_CODES = tuple(b"MIDNSHP=X"[i:i + 1] for i in range(9))
 SEQUENCE_VALUES = tuple(b"=ACMGRSVTWYHKDBN"[i:i + 1] for i in range(9))
 """tuple: ASCII encoded sequence values indexed by their numeric code."""
 
+
 class CigarOps(IntEnum):
     """Enum of numeric CIGAR operations."""
-    MATCH = 0 # M
-    INS = 1 # I
-    DEL = 2 # D
-    REF_SKIP = 3 # N
-    SOFT_CLIP = 4 # S
-    HARD_CLIP = 5 # H
-    PAD = 6 # P
-    EQUAL = 7 # =
-    DIFF = 8 # X
-    BACK = 9 # B
+    MATCH = 0  # M
+    INS = 1  # I
+    DEL = 2  # D
+    REF_SKIP = 3  # N
+    SOFT_CLIP = 4  # S
+    HARD_CLIP = 5  # H
+    PAD = 6  # P
+    EQUAL = 7  # =
+    DIFF = 8  # X
+    BACK = 9  # B
+
 
 CONSUMES_QUERY = (
     True,  # M
@@ -67,6 +69,7 @@ CLIPPED = (
     False,  # X
 )
 """tuple: Boolean values ordered by op code indicating if op is soft or hard clip."""
+
 
 def is_bam(buffer, offset=0):
     """

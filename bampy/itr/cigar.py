@@ -1,5 +1,6 @@
 import re
-from ..bam.util import CONSUMES_REFERENCE, CONSUMES_QUERY, CLIPPED, CigarOps
+
+from ..bam.util import CLIPPED, CONSUMES_QUERY, CONSUMES_REFERENCE, CigarOps
 
 MDOps = re.compile('(\d*)\^?([A-Za-z])')
 
@@ -30,7 +31,7 @@ class CigarIterator:
                 for mdOp in MDOps.finditer(md):
                     matchCount, refBase = mdOp.group(1, 2)
                     mdOffset += int(matchCount or 0)
-                    while pos <= mdOffset: # Scan CIGAR for insertions and add to offset as MD does not include insertions in MD coordinate space
+                    while pos <= mdOffset:  # Scan CIGAR for insertions and add to offset as MD does not include insertions in MD coordinate space
                         pos += self.ops[i][0]
                         if self.ops[i][1] == CigarOps.INS:
                             mdOffset += self.ops[i][0]
@@ -67,7 +68,7 @@ class CigarIterator:
             yield self
 
     def step(self, i: int):
-        #TODO support negative step
+        # TODO support negative step
         if i < 0: raise NotImplementedError("Negative stepping not yet supported.")
         return self.skip_to_pos(self.op_pos + i)
 
@@ -86,7 +87,7 @@ class CigarIterator:
     def next(self) -> bool:
         return self.step(1)
 
-    #def prev(self) -> bool:
+    # def prev(self) -> bool:
     #    return self.step(-1)
 
     def next_op(self) -> bool:
@@ -107,18 +108,18 @@ class CigarIterator:
             count += self.step_op()
         return count
 
-    def skip_to_pos(self, pos: int): # Pos is in cigar space
+    def skip_to_pos(self, pos: int):  # Pos is in cigar space
         if pos < 0:
             raise IndexError
         if not self.valid:
             return False
 
-        #Jog through operations until new position
+        # Jog through operations until new position
         while self.op_end < pos: self.step_op()
         delta = pos - self.op_pos
 
         if delta:
-            #Add remainder within current operation
+            # Add remainder within current operation
             self.op_pos = pos
             if self.in_seq:
                 self.seq_pos += delta
@@ -127,17 +128,17 @@ class CigarIterator:
 
         return self.valid
 
-    def skip_to_ref_pos(self, pos): # Pos is in reference space
-        #Jog to op that contains pos
+    def skip_to_ref_pos(self, pos):  # Pos is in reference space
+        # Jog to op that contains pos
         while self.valid and (self.ref_pos + self.op_length < pos or not self.in_ref):
             self.step_op()
 
-        #Step within current op
+        # Step within current op
         self.step(pos - self.ref_pos)
 
         return self.valid
 
-    def skip_to_nonref(self) -> bool: # Move iterator to next non-reference cigar position (variant in MD tag)
+    def skip_to_nonref(self) -> bool:  # Move iterator to next non-reference cigar position (variant in MD tag)
         md = self._getMD()
         if md[0] is None:
             return False
@@ -169,11 +170,11 @@ class CigarIterator:
         return self.op_length - (self.op_pos - self.op_start)
 
     @property
-    def in_ref(self) -> bool: # Returns true if the passed operation has a reference coordinate
+    def in_ref(self) -> bool:  # Returns true if the passed operation has a reference coordinate
         return CONSUMES_REFERENCE[self.op]
 
     @property
-    def in_seq(self) -> bool: # Returns true if the passed operation has a sequence coordinate
+    def in_seq(self) -> bool:  # Returns true if the passed operation has a sequence coordinate
         return CONSUMES_QUERY[self.op]
 
     @property
@@ -186,7 +187,7 @@ class CigarIterator:
 
     @property
     def matches_ref(self) -> bool:
-        return self._getMD()[1] != self.op_pos #self.getSeqBase() == self.getRefBase()
+        return self._getMD()[1] != self.op_pos  # self.getSeqBase() == self.getRefBase()
 
     @property
     def seq_base(self) -> int or None:
@@ -222,6 +223,9 @@ class CigarIterator:
 
     def __repr__(self):
         if self.valid:
-            return "{} Op:{}{} CigPos:{} RefPos:{} SeqPos:{} Base:{} Quality:{} RefBase:{}".format(self.record.name, self.op_length, "MIDNSHP=XB"[self.op], self.op_pos, self.ref_pos, self.seq_pos, self.seq_base, self.base_qual, self.ref_base)
+            return "{} Op:{}{} CigPos:{} RefPos:{} SeqPos:{} Base:{} Quality:{} RefBase:{}".format(self.record.name, self.op_length,
+                                                                                                   "MIDNSHP=XB"[self.op], self.op_pos, self.ref_pos,
+                                                                                                   self.seq_pos, self.seq_base, self.base_qual,
+                                                                                                   self.ref_base)
         else:
             return "{} INVALID".format(self.record.name)

@@ -23,4 +23,5 @@ For more:
 
 from .record import Record
 from .tag import Tag
-from .util import header_from_buffer, header_from_stream, header_to_buffer, header_to_stream, is_bam, pack_header, OP_CODES, SEQUENCE_VALUES, CONSUMES_REFERENCE, CONSUMES_QUERY, CLIPPED, CigarOps
+from .util import CLIPPED, CONSUMES_QUERY, CONSUMES_REFERENCE, CigarOps, OP_CODES, SEQUENCE_VALUES, header_from_buffer, header_from_stream, \
+    header_to_buffer, header_to_stream, is_bam, pack_header

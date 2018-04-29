@@ -1,12 +1,14 @@
+import ctypes as C
+import io
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
-import ctypes as C, io, numba
 
-from . import zlib
+import numba
 
-from bampy.bgzf.writer import SIZEOF_TRAILER, SIZEOF_FIXED_XLEN_HEADER, SIZEOF_UINT16, MAX_BLOCK_SIZE, MAX_DATA_SIZE
 from bampy.bgzf.block import FIXED_XLEN_HEADER, Trailer
+from bampy.bgzf.writer import MAX_BLOCK_SIZE, MAX_DATA_SIZE, SIZEOF_FIXED_XLEN_HEADER, SIZEOF_TRAILER, SIZEOF_UINT16
 from bampy.mt import CACHE_JIT, THREAD_NAME
+from . import zlib
 
 
 @numba.jit(nopython=True, nogil=True, cache=CACHE_JIT)
@@ -40,7 +42,7 @@ def deflate(data, buffer, offset=0):
 
 
 class _Writer:
-    def __init__(self, output, thread_pool: ThreadPoolExecutor, _thread_func = deflate):
+    def __init__(self, output, thread_pool: ThreadPoolExecutor, _thread_func=deflate):
         self.pool = thread_pool
         self._thread_func = _thread_func
         self.output = output
@@ -76,7 +78,7 @@ class BufferWriter(_Writer):
     def flush(self, wait=False):
         while self.results[0].done() or wait:
             buffer, offset = self.results.popleft().result()
-            self.output[self.offset:self.offset+offset] = buffer[:offset]
+            self.output[self.offset:self.offset + offset] = buffer[:offset]
             self.offset += offset
 
 
@@ -99,4 +101,3 @@ def Writer(output, offset=0, thread_pool: ThreadPoolExecutor = ThreadPoolExecuto
         return StreamWriter(output, thread_pool)
     else:
         return BufferWriter(output, offset, thread_pool)
-

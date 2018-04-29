@@ -6,7 +6,7 @@ import ctypes as C
 import io
 
 from . import block, zlib
-from .block import MAX_CDATA_SIZE, MAX_DATA_SIZE
+from .block import MAX_CDATA_SIZE
 from .util import MAX_BLOCK_SIZE
 
 SIZEOF_TRAILER = C.sizeof(block.Trailer)
@@ -21,6 +21,7 @@ class _Writer:
     Base class for buffer and stream writers.
     Provides Callable interface to compress data into blocks.
     """
+
     def __init__(self, output, offset=0):
         """
         Constructor.
@@ -136,6 +137,7 @@ class BufferWriter(_Writer):
     """
     Implements _Writer to output to a randomly accessible buffer interface.
     """
+
     def __init__(self, output, offset=0):
         super().__init__(output, offset)
         self._data_buffer = output
@@ -146,6 +148,7 @@ class StreamWriter(_Writer):
     Implements _Writer to output to a stream.
     Internally buffers each block until it is finished before writing to the stream.
     """
+
     def __init__(self, output):
         super().__init__(output, 0)
         self._data_buffer = bytearray(MAX_BLOCK_SIZE)

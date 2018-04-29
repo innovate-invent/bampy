@@ -119,7 +119,8 @@ class zState(C.Structure):
 SIZEOF_ZSTATE = C.sizeof(zState)
 
 
-def raw_compress(src=None, dest=None, mode=Z_FINISH, state=None, level=DEFAULT_COMPRESSION_LEVEL, wbits=MAX_WBITS, memlevel=DEFAULT_MEM_LEVEL, dictionary=None) -> (int, zState):
+def raw_compress(src=None, dest=None, mode=Z_FINISH, state=None, level=DEFAULT_COMPRESSION_LEVEL, wbits=MAX_WBITS, memlevel=DEFAULT_MEM_LEVEL,
+                 dictionary=None) -> (int, zState):
     """
     Wraps zlib.deflate().
     Manages compression state and conversion to ctypes compatible types.
@@ -217,14 +218,17 @@ def raw_decompress(src=None, dest=None, mode=Z_FINISH, state=None, wbits=MAX_WBI
 
     return err, state
 
+
 def bound(state, src_len):
     return _zlib.deflateBound(C.byref(state), src_len)
+
 
 def default_bound(src_len):
     state = zState()
     _zlib.deflateInit2_(C.byref(state), DEFAULT_COMPRESSION_LEVEL, Z_DEFLATED, -MAX_WBITS, DEFAULT_MEM_LEVEL, Z_DEFAULT_STRATEGY, ZLIB_VERSION,
                         SIZEOF_ZSTATE)
     return bound(state, src_len)
+
 
 def default_bound_max(dest_len):
     state = C.byref(zState())
@@ -238,6 +242,7 @@ def default_bound_max(dest_len):
         current = _zlib.deflateBound(state, src_len)
         src_len = int(src_len * dest_len / current)
     return src_len
+
 
 def crc32(src, crc=None):
     """

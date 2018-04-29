@@ -1,23 +1,27 @@
+import io
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 
-import numba, io
+import numba
 
-from ...bgzf.reader import StreamReader, BufferReader, EmptyBlock, _Reader as __Reader
-from ...bgzf import Block
-from . import zlib
 from bampy.mt import CACHE_JIT
+from . import zlib
+from ...bgzf import Block
+from ...bgzf.reader import BufferReader, EmptyBlock, StreamReader, _Reader as __Reader
+
 
 @numba.jit(nopython=True, nogil=True, cache=CACHE_JIT)
 def inflate(data, buffer, offset=0):
     zlib.raw_decompress(data, buffer[offset:])
     return buffer, offset
 
+
 class _Reader(__Reader):
     """
     Base class for buffer and stream readers.
     Provides Iterable interface to read in blocks.
     """
+
     def __init__(self, input, threadpool: ThreadPoolExecutor):
         """
         Constructor.
@@ -64,11 +68,11 @@ def Reader(input, offset: int = 0, peek=None) -> _Reader:
         return BufferReader(input, offset)
 
 
-
 class StreamReader(_Reader):
     """
     Implements _Reader to handle input data that is not accessible through a buffer interface.
     """
+
     def __init__(self, input, peek=None):
         """
         Constructor.
@@ -103,6 +107,7 @@ class BufferReader(_Reader):
     """
     Implements _Reader to handle input data that is accessible through a buffer interface.
     """
+
     def __init__(self, input, offset=0):
         """
         Constructor.
@@ -122,7 +127,7 @@ class BufferReader(_Reader):
             self.total_in += block_len
             self.total_out += block.uncompressed_size
             if block.uncompressed_size:
-                self.blockqueue.append(self.pool.submit(inflate, cdata,  bytearray(block.uncompressed_size))) #TODO reuse buffers
+                self.blockqueue.append(self.pool.submit(inflate, cdata, bytearray(block.uncompressed_size)))  # TODO reuse buffers
             else:
                 raise EmptyBlock()
         if not len(self.blockqueue):
@@ -130,4 +135,3 @@ class BufferReader(_Reader):
         self.buffer = self.blockqueue.popleft().result()
         self.remaining = len(self.buffer)
         return self.buffer
-

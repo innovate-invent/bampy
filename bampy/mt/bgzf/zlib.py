@@ -1,4 +1,5 @@
 import numba
+
 import bampy.bgzf.zlib as zlib
 from bampy.mt import CACHE_JIT
 

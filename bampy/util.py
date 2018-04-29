@@ -2,8 +2,10 @@ import mmap
 import os
 import stat
 
+
 def is_pipe(path):
     return stat.S_ISFIFO(os.stat(path).st_mode)
+
 
 def open_buffer(path, mode=os.O_RDWR | os.O_CREAT, size=0) -> mmap:
     """

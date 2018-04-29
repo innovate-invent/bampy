@@ -1,12 +1,13 @@
+import ctypes as C
+import io
 import warnings
 from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
-from .. import bam, bgzf
-from ..reader import BAMStreamReader, SAMStreamReader, BAMBufferReader, SAMBufferReader, BGZFReader as _BGZFReader, TruncatedFileWarning
-from .bgzf import Reader as bgzf_Reader
-from bampy.mt import THREAD_NAME
 
-import io, ctypes as C
+from bampy.mt import THREAD_NAME
+from .bgzf import Reader as bgzf_Reader
+from .. import bam, bgzf
+from ..reader import BAMBufferReader, BAMStreamReader, BGZFReader as _BGZFReader, SAMBufferReader, SAMStreamReader, TruncatedFileWarning
 
 _Last = namedtuple('buffer', 'offset', 'remaining')
 
@@ -78,4 +79,4 @@ def Reader(input, offset=0, threadpool: ThreadPoolExecutor = ThreadPoolExecutor(
             return BAMBufferReader(input, offset)
         else:
             # SAM
-            return SAMBufferReader(input, offset) #TODO multithread sam parsing, eeeww
+            return SAMBufferReader(input, offset)  # TODO multithread sam parsing, eeeww

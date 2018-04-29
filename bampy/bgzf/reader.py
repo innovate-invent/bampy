@@ -19,6 +19,7 @@ class _Reader:
     Base class for buffer and stream readers.
     Provides Iterable interface to read in blocks.
     """
+
     def __init__(self, input):
         """
         Constructor.
@@ -85,6 +86,7 @@ class StreamReader(_Reader):
     """
     Implements _Reader to handle input data that is not accessible through a buffer interface.
     """
+
     def __init__(self, input, peek=None):
         """
         Constructor.
@@ -110,6 +112,7 @@ class BufferReader(_Reader):
     """
     Implements _Reader to handle input data that is accessible through a buffer interface.
     """
+
     def __init__(self, input, offset=0):
         """
         Constructor.

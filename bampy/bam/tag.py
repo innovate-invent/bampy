@@ -9,7 +9,7 @@ BTAG_TYPES = {b'c': C.c_int8, b'C': C.c_uint8, b's': C.c_int16, b'S': C.c_uint16
 TAG_TYPES = {b'A': C.c_char}
 TAG_TYPES.update(BTAG_TYPES)
 
-SIZEOF_TAG_TYPES = {k:C.sizeof(v) for k, v in TAG_TYPES.items()}
+SIZEOF_TAG_TYPES = {k: C.sizeof(v) for k, v in TAG_TYPES.items()}
 
 
 class TagHeader(C.LittleEndianStructure):
