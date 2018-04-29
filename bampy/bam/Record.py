@@ -14,6 +14,82 @@ SIZEOF_INT32 = C.sizeof(C.c_int32)
 CSTRING_TERMINATOR = (C.c_ubyte * 1)() # Represents null byte used to terminate the record name field
 
 
+class _TagSet:
+    """
+    Alternative implementation to a dict to store tags that maintains its associated records block_size when a tag is resized, added, or removed.
+    This uses a list rather than a dict assuming that records do not contain numerous tags.
+    This is largely due to the fact that numba does not support dict.
+
+    Do not instantiate instances directly, the record maintains its own instance.
+    """
+    __slots__ = '_size', '_record', '_tags'
+
+    def __init__(self, record, buffer, offset=0):
+        tags = []
+        total_size = 0
+        while offset < len(buffer):
+            tag = Tag(buffer, offset)
+            size = tag.size()
+            if size:
+                tags.append(tag)
+                total_size += size
+            else:
+                raise ValueError("Unexpected buffer size.")
+            offset += size
+        self._record = record
+        self._tags = tags
+        self._size = total_size
+
+    def __getitem__(self, item):
+        for tag in self._tags:
+            if tag.tag == item:
+                return tag
+        else:
+            raise IndexError("{} tag not defined.".format(item))
+
+    def update(self, value):
+        size = value.size()
+        for i, tag in enumerate(self._tags):
+            if tag.tag == value.tag:
+                self._tags[i] = value
+                delta = size - tag.size()
+                self.size += delta
+                self._record._header.block_size += delta  # TODO This isn't ideal modifying the record outside its context
+                return
+        else:
+            self._tags.append(value)
+            self.size += size
+            self._record._header.block_size += size  # TODO This isn't ideal modifying the record outside its context
+
+    def __delitem__(self, key):
+        for i, tag in enumerate(self._tags):
+            if tag.tag == key:
+                self._tags.pop(i)
+                size = tag.size()
+                self._size -= size
+                self._record._header.block_size -= size  # TODO This isn't ideal modifying the record outside its context
+
+    def pack(self):
+        tags = self._tags
+        if isinstance(tags, dict):
+            tag_buffer = bytearray()
+            for tag in self.tags.values():
+                tag_buffer += tag.pack()
+            self._tags = tag_buffer
+
+    def size(self):
+        return self._size
+
+    def __len__(self):
+        return len(self._tags)
+
+    def copy(self):
+        new = _TagSet.__new__(_TagSet)
+        new._record = self._record
+        new._size = self._size
+        new._tags = [tag.copy() for tag in self._tags]
+
+
 class RecordFlags(IntFlag):
     """
     Represents flag bit values. Can be OR'd (|) together or AND (&) to determine flag setting.
@@ -86,6 +162,7 @@ class Record:
 
     @name.setter
     def name(self, value):
+        self._header.block_size += len(value) - len(self._name)
         self._name = value
         self._header.name_length = len(value) + 1
 
@@ -97,6 +174,8 @@ class Record:
 
     @cigar.setter
     def cigar(self, value):
+        self._header.block_size += len(value) - len(self._value)
+        #TODO update template length?
         self._cigar = value
         self._header.cigar_length = len(value)
         self._update_bin()
@@ -109,6 +188,7 @@ class Record:
 
     @sequence.setter
     def sequence(self, value):
+        self._header.block_size += len(value) - len(self._sequence)
         self._sequence = value
         self._header.sequence_length = len(value)
 
@@ -120,12 +200,13 @@ class Record:
 
     @quality_scores.setter
     def quality_scores(self, value):
+        self._header.block_size += len(value) - len(self._quality_scores)
         self._quality_scores = value
 
     @property
     def tags(self):
-        if not isinstance(self._tags, dict):
-            self._unpack_tags()
+        if not isinstance(self._tags, _TagSet):
+            self._tags = _TagSet(self, self._tags)
         return self._tags
 
     @tags.setter
@@ -234,7 +315,7 @@ class Record:
         if offset < header.block_size - SIZEOF_RECORDHEADER:
             tags = (C.c_ubyte * (header.block_size + SIZEOF_UINT32 - offset - SIZEOF_RECORDHEADER)).from_buffer(buffer, offset)
         else:
-            tags = {}
+            tags = bytes()
         self._name, self._cigar, self._sequence, self._quality_scores, self._tags = name, cigar, sequence, quality_scores, tags
         self._buffer = None
 
@@ -315,28 +396,6 @@ class Record:
         for datum in data:
             stream.write(datum)
 
-    def _pack_tags(self):
-        tags = self._tags
-        if isinstance(tags, dict):
-            tag_buffer = bytearray()
-            for tag in self.tags.values():
-                tag_buffer += tag.pack()
-            self.tags = tag_buffer
-            self._tags = tag_buffer
-
-    def _unpack_tags(self):
-        if not isinstance(self._tags, dict):
-            offset = 0
-            tags = {}
-            while offset < len(self._tags):
-                tag = Tag(self._tags, offset)
-                if tag.size():
-                    tags[tag.tag] = tag
-                else:
-                    raise ValueError("Unexpected buffer size.")
-                offset += tag.size()
-            self._tags = tags
-
     def _update_bin(self) -> None:
         """
         Updates the bin field in the record header.
@@ -355,9 +414,8 @@ class Record:
         """
         self.sequence = PackedSequence.pack(self.sequence)
         self.cigar = PackedCIGAR.pack(self.cigar)
-        if update:
-            self.update()
-        self._pack_tags()
+        if isinstance(self._tags, _TagSet):
+            self._tags = self._tags.pack()
         return [self._header, self.name, CSTRING_TERMINATOR, self.cigar.buffer, self.sequence.buffer, self.quality_scores, self._tags]
 
     def unpack(self) -> None:
@@ -452,7 +510,6 @@ class Record:
     def __len__(self) -> int:
         """
         Returns the bytes length of the record.
-        Call update() after modifying the sequence, cigar, name, or tags for this value to be accurate.
         :return: The byte length of the record in memory
         """
         return self.block_size + SIZEOF_INT32
@@ -468,8 +525,8 @@ class Record:
         new.cigar = self.cigar.copy() if isinstance(self.cigar, PackedCIGAR) else bytearray(self.cigar)
         new.sequence = self.sequence.copy() if isinstance(self.sequence) else bytearray(self.sequence)
         new.quality_scores = bytearray(self.quality_scores)
-        tags = super().__getattribute__('tags')
-        if isinstance(tags, dict):
+        tags = self._tags
+        if isinstance(tags, _TagSet):
             new.tags = {}
             for value in self.tags.values():
                 tag = value.copy()

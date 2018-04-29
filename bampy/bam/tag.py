@@ -68,7 +68,7 @@ class Tag:
         if self._buffer is not None:
             length = SIZEOF_TAGHEADER
             if self._header.value_type == b'B':
-                # TODO make sure this is right, need data that uses B
+                # TODO make sure this is right, need data that uses B to verify
                 length += SIZEOF_UINT32 + (len(self._buffer))
             elif self._header.value_type in b'HZ':
                 length += len(self._buffer)
@@ -150,8 +150,19 @@ class Tag:
     def __setitem__(self, i, value):
         if self._buffer:
             if self._header.value_type in b'ZBH':
-                self._buffer[i] = value
+                if isinstance(i, slice):
+                    start = i.start or 0
+                    stop = i.stop or len(self)
+                    step = i.step or 1
+                    if hasattr(value, '__iter__') and len(value) == (stop - start) // step:
+                        self._buffer[i] = value
+                    else:
+                        raise ValueError("Slice assignment can not change length of sequence.")
+                else:
+                    self._buffer[i] = value
             else:
+                if isinstance(i, slice):
+                    raise IndexError("{} tag type not indexable.".format(self._header.tag))
                 self._buffer = value
         else:
             raise ValueError("Buffer not initialised.")
