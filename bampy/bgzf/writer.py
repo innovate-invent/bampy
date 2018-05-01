@@ -6,7 +6,7 @@ import ctypes as C
 import io
 
 from . import block, zlib
-from .block import MAX_CDATA_SIZE
+from .block import MAX_CDATA_SIZE, MAX_DATA_SIZE
 from .util import MAX_BLOCK_SIZE
 
 SIZEOF_TRAILER = C.sizeof(block.Trailer)
@@ -22,7 +22,7 @@ class _Writer:
     Provides Callable interface to compress data into blocks.
     """
 
-    def __init__(self, output, offset=0):
+    def __init__(self, output, offset=0, level=zlib.DEFAULT_COMPRESSION_LEVEL):
         """
         Constructor.
         :param output: The buffer to output compressed data.
@@ -34,6 +34,7 @@ class _Writer:
         self.total_out = 0
         self.offset = offset
         self._output = output
+        self._level = level
 
     def _deflate(self, data) -> int:
         """
@@ -56,7 +57,7 @@ class _Writer:
 
         if data_len > self._cdata_len:
             # Must split data so fill remainder
-            res, state = zlib.raw_compress(data, mode=zlib.Z_FINISH, state=state)
+            res, state = zlib.raw_compress(data, mode=zlib.Z_FINISH, state=state, level=self._level)
             assert res == zlib.Z_STREAM_END
             self._state = state
             self.finish_block(False)
@@ -66,7 +67,7 @@ class _Writer:
             self.finish_block()
             return 0
         else:
-            res, self._state = zlib.raw_compress(data, None if state else self._cdata, mode=zlib.Z_NO_FLUSH, state=state)
+            res, self._state = zlib.raw_compress(data, None if state else self._cdata, mode=zlib.Z_NO_FLUSH, state=state, level=self._level)
             assert res == zlib.Z_OK
             return data_len
 
@@ -138,8 +139,8 @@ class BufferWriter(_Writer):
     Implements _Writer to output to a randomly accessible buffer interface.
     """
 
-    def __init__(self, output, offset=0):
-        super().__init__(output, offset)
+    def __init__(self, output, offset=0, level=zlib.DEFAULT_COMPRESSION_LEVEL):
+        super().__init__(output, offset, level=level)
         self._data_buffer = output
 
 
@@ -149,8 +150,8 @@ class StreamWriter(_Writer):
     Internally buffers each block until it is finished before writing to the stream.
     """
 
-    def __init__(self, output):
-        super().__init__(output, 0)
+    def __init__(self, output, level=zlib.DEFAULT_COMPRESSION_LEVEL):
+        super().__init__(output, 0, level=level)
         self._data_buffer = bytearray(MAX_BLOCK_SIZE)
 
     def finish_block(self, flush=True):

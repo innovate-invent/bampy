@@ -4,21 +4,21 @@ import warnings
 from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
 
-from bampy.mt import THREAD_NAME
+from bampy.mt import THREAD_NAME, DEFAULT_THREADS
 from .bgzf import Reader as bgzf_Reader
 from .. import bam, bgzf
 from ..reader import BAMBufferReader, BAMStreamReader, BGZFReader as _BGZFReader, SAMBufferReader, SAMStreamReader, TruncatedFileWarning
 
-_Last = namedtuple('buffer', 'offset', 'remaining')
+_Last = namedtuple('_Last', ('buffer', 'offset', 'remaining'))
 
 
 class BGZFReader(_BGZFReader):
-    def __init__(self, input, offset=0, peek=None, threadpool: ThreadPoolExecutor = ThreadPoolExecutor(thread_name_prefix=THREAD_NAME)):
-        self.pool = threadpool
-        super().__init__(input, offset)
+    def __init__(self, input, offset=0, peek=None, threadpool: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=DEFAULT_THREADS, thread_name_prefix=THREAD_NAME)):
+        super().__init__(input, offset, peek)
         self._last = _Last(self._bgzfReader.buffer, self._bgzfOffset, self._bgzfReader.remaining)
         # Re-init with multithreaded reader
-        self._bgzfReader = bgzf_Reader(self._input, self._bgzfReader.offset if hasattr(self._bgzfReader, 'offset') else 0)
+        self._bgzfReader = bgzf_Reader(self._input, self._bgzfReader.offset if hasattr(self._bgzfReader, 'offset') else 0, None, threadpool)
+        next(self._bgzfReader)
 
     def __next__(self):
         empty = False
@@ -54,7 +54,7 @@ class BGZFReader(_BGZFReader):
                 self._bgzfOffset = 0
 
 
-def Reader(input, offset=0, threadpool: ThreadPoolExecutor = ThreadPoolExecutor(thread_name_prefix=THREAD_NAME)):
+def Reader(input, offset=0, threadpool: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=DEFAULT_THREADS, thread_name_prefix=THREAD_NAME)):
     """
     Convenience interface for reading alignment records from BGZF/BAM/SAM files.
     :param input: Stream or buffer containing alignment data.

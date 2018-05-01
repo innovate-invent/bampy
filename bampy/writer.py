@@ -1,6 +1,7 @@
 import io
 
 from . import bam, bgzf, sam
+from .bgzf import zlib
 
 
 class Writer:
@@ -44,7 +45,7 @@ class Writer:
             return BAMBufferWriter(output, bam.header_to_buffer(output, offset, sam_header, references))
 
     @staticmethod
-    def bgzf(output, offset=0, sam_header=b'', references=()):
+    def bgzf(output, offset=0, sam_header=b'', references=(), level=zlib.DEFAULT_COMPRESSION_LEVEL):
         """
         TODO
         :param output:
@@ -53,7 +54,7 @@ class Writer:
         :param references:
         :return:
         """
-        writer = BGZFWriter(output, offset)
+        writer = BGZFWriter(output, offset, level=level)
         writer._output(bam.pack_header(sam_header, references))
         writer._output.finish_block()
         return writer
@@ -98,8 +99,8 @@ class BAMBufferWriter(BufferWriter):
 
 
 class BGZFWriter(Writer):
-    def __init__(self, output, offset=0):
-        super().__init__(bgzf.Writer(output, offset))
+    def __init__(self, output, offset=0, level=zlib.DEFAULT_COMPRESSION_LEVEL):
+        super().__init__(bgzf.Writer(output, offset, level=level))
 
     def __call__(self, record):
         data = record.pack()

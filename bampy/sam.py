@@ -25,7 +25,7 @@ def header_from_stream(stream, _magic=None) -> (dict, list, int):
         else:
             header[tag].append({m[0]: m[1] for m in header_re.findall(line)})
 
-    return header, [bam.Reference(ref[b'SN'], int(ref[b'LN'])) for ref in header.pop(b'SQ')], 0
+    return header, [bam.Reference(ref[b'SN'], int(ref[b'LN'])) for ref in header.pop(b'SQ')] if b'SQ' in header else [], 0
 
 
 def header_from_buffer(buffer, offset=0) -> (dict, list, int):
@@ -48,14 +48,14 @@ def header_from_buffer(buffer, offset=0) -> (dict, list, int):
             header[tag].append({m[0]: m[1] for m in header_re.findall(line)})
         offset = end + 1
 
-    return header, [bam.Reference(ref[b'SN'], int(ref[b'LN'])) for ref in header.pop(b'SQ')], offset
+    return header, [bam.Reference(ref[b'SN'], int(ref[b'LN'])) for ref in header.pop(b'SQ')] if b'SQ' in header else [], offset
 
 
 def pack_header(header, references=()) -> bytearray:
     """
     Convert dict object returned by sam.header_from_buffer and sam.header_from_stream to a buffer.
     :param header: Dict containing header information or bytearray object.
-    :param references: List of Reference object to append to the header.
+    :param references: List of Reference objects to append to the header.
     :return: Bytearray containing header data.
     """
     if isinstance(header, dict):
@@ -75,7 +75,8 @@ def pack_header(header, references=()) -> bytearray:
         assert header[b'SQ'] or references, "No references provided."
         header = HD + buffer
 
-    for ref in references:
-        header += bytes(ref)
+    if header:
+        for ref in references:
+            header += bytes(ref)
 
     return header

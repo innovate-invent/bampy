@@ -46,7 +46,7 @@ class Header(C.LittleEndianStructure):
 SIZEOF_HEADER = C.sizeof(Header)
 
 
-class SubField(C.LittleEndianStructure):
+class SubFieldHeader(C.LittleEndianStructure):
     """
     Represents a BGZF/GZIP block subfield header.
     """
@@ -58,10 +58,21 @@ class SubField(C.LittleEndianStructure):
     ]
 
 
-SIZEOF_SUBFIELD = C.sizeof(SubField)
+SIZEOF_SUBFIELDHEADER = C.sizeof(SubFieldHeader)
 
 
-class BSIZE(SubField):
+class SubField:
+    __slots__ = 'header', 'data'
+
+    def __init__(self, header, data):
+        self.header = header
+        self.data = data
+
+    @property
+    def tag(self):
+        return bytes((self.header.SI1, self.header.SI2))
+
+class BSIZE(SubFieldHeader):
     """
     Dedicated SubField subclass for the required block size field.
     """
@@ -99,7 +110,7 @@ class Block:
     """
     __slots__ = '_header', '_trailer', 'extra_fields', 'size'
 
-    def __init__(self, header: Header, extra_fields: dict, trailer: Trailer):
+    def __init__(self, header: Header, extra_fields: list, trailer: Trailer):
         """
         Constructor.
         :param header: Header object instance.
@@ -107,8 +118,8 @@ class Block:
         :param trailer: Trailer object instance.
         """
         self._header = header
-        self._extra_fields = extra_fields
-        self._size = Block._getSize(extra_fields)
+        self.extra_fields = extra_fields
+        self.size = Block._getSize(extra_fields)
         self._trailer = trailer
 
     @property
@@ -164,12 +175,12 @@ class Block:
         return self._header.extra_length
 
     @extra_length.setter
-    def extra_flags(self, value):
+    def extra_length(self, value):
         self._header.extra_length = value
 
     @property
     def CRC32(self):
-        return self._footer.CRC32
+        return self._trailer.CRC32
 
     @CRC32.setter
     def CRC32(self, value):
@@ -177,7 +188,7 @@ class Block:
 
     @property
     def uncompressed_size(self):
-        return self._footer.uncompressed_size
+        return self._trailer.uncompressed_size
 
     @uncompressed_size.setter
     def uncompressed_size(self, value):
@@ -236,6 +247,7 @@ class Block:
         if header.id1 != 31 and header.id2 != 139:
             raise InvalidBGZF("Invalid block header found: ID1: {} ID2: {}".format(header.id1, header.id2))
 
+        assert header.extra_length >= SIZEOF_BSIZE, "No extra fields found in bgzf header, requires at least BC field."
         extra_fields_buffer = bytearray(header.extra_length)
         assert stream.readinto(extra_fields_buffer) == header.extra_length
         extra_fields = Block._parseExtra(extra_fields_buffer)
@@ -258,13 +270,13 @@ class Block:
         :param buffer: Buffer containing extra field data.
         :return: Dict containing field values keyed on two byte field identifier.
         """
-        extraFields = {}
+        extraFields = []
         fieldOffset = 0
         while fieldOffset < len(buffer):
-            field = SubField.from_buffer(buffer, fieldOffset)
-            fieldStart = fieldOffset + SIZEOF_SUBFIELD
-            extraFields[bytes((field.SI1, field.SI2))] = buffer[fieldStart: fieldStart + field.SLEN]
-            fieldOffset += SIZEOF_SUBFIELD + field.SLEN
+            field = SubFieldHeader.from_buffer(buffer, fieldOffset)
+            fieldStart = fieldOffset + SIZEOF_SUBFIELDHEADER
+            extraFields.append(SubField(field, buffer[fieldStart: fieldStart + field.SLEN]))
+            fieldOffset += SIZEOF_SUBFIELDHEADER + field.SLEN
         return extraFields
 
     @staticmethod
@@ -275,9 +287,13 @@ class Block:
         :return: Total size of block.
         """
         # Load BGZF required BC field
-        BC = extra_fields.get(b'BC')
+        BC = None
+        for field in extra_fields:
+            if field.tag == b'BC':
+                BC = field.data
+                break
         if BC:
             size = int.from_bytes(BC, byteorder='little', signed=False) + 1  # type: int
             if size is not None:
                 return size
-        raise InvalidBGZF("Missing block size field.")
+        raise InvalidBGZF("Missing block size (BC) extra field in bgzf header.")

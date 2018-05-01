@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import numba
 
-from bampy.mt import CACHE_JIT
+from bampy.mt import CACHE_JIT, THREAD_NAME, DEFAULT_THREADS
 from . import zlib
 from ...bgzf import Block
 from ...bgzf.reader import BufferReader, EmptyBlock, StreamReader, _Reader as __Reader
@@ -32,20 +32,6 @@ class _Reader(__Reader):
         self.blockqueue = deque()
         self.max_queued = 0
 
-    # def _init_buffer(self, size):
-    #     buffer = (C.c_ubyte * (size + self.remaining))()
-    #     self.buffer = buffer
-    #     if self.remaining:
-    #         # Copy forward any remaining data into the next buffer
-    #         C.memmove(buffer, C.byref(self.buffer, len(self.buffer) - self.remaining), self.remaining)
-    #         buffer = (C.c_ubyte * size).from_buffer(buffer, self.remaining)
-    #     self.remaining += size
-    #     return buffer
-
-    @property
-    def buffer(self):
-        return self.buffer
-
     def __iter__(self):
         return self
 
@@ -53,7 +39,7 @@ class _Reader(__Reader):
         raise NotImplementedError()
 
 
-def Reader(input, offset: int = 0, peek=None) -> _Reader:
+def Reader(input, offset: int = 0, peek=None, threadpool: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=DEFAULT_THREADS, thread_name_prefix=THREAD_NAME)) -> _Reader:
     """
     Factory to provide a unified reader interface.
     Resolves if input is randomly accessible and provides the appropriate _Reader implementation.
@@ -63,9 +49,9 @@ def Reader(input, offset: int = 0, peek=None) -> _Reader:
     :return: An instance of StreamReader or BufferReader.
     """
     if isinstance(input, (io.RawIOBase, io.BufferedIOBase)):
-        return StreamReader(input, peek)
+        return StreamReader(input, peek, threadpool)
     else:
-        return BufferReader(input, offset)
+        return BufferReader(input, offset, threadpool)
 
 
 class StreamReader(_Reader):
@@ -73,13 +59,13 @@ class StreamReader(_Reader):
     Implements _Reader to handle input data that is not accessible through a buffer interface.
     """
 
-    def __init__(self, input, peek=None):
+    def __init__(self, input, peek=None, threadpool: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=DEFAULT_THREADS, thread_name_prefix=THREAD_NAME)):
         """
         Constructor.
         :param input: Stream object to read from.
         :param peek: Data consumed from stream while peeking. Will be prepended to read data.
         """
-        super().__init__(input)
+        super().__init__(input, threadpool)
         self._peek = peek
 
     def __next__(self):
@@ -91,7 +77,7 @@ class StreamReader(_Reader):
                 self.total_in += len(block)
                 self.total_out += block.uncompressed_size
                 if block.uncompressed_size:
-                    self.blockqueue.append(self.pool.submit(inflate, cdata, bytearray(block.uncompressed_size)))  # TODO reuse buffers
+                    self.blockqueue.append(self.pool.submit(inflate, cdata, memoryview(bytearray(block.uncompressed_size))))  # TODO reuse buffers
                 else:
                     raise EmptyBlock()
         except EOFError:
@@ -108,13 +94,13 @@ class BufferReader(_Reader):
     Implements _Reader to handle input data that is accessible through a buffer interface.
     """
 
-    def __init__(self, input, offset=0):
+    def __init__(self, input, offset=0, threadpool: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=DEFAULT_THREADS, thread_name_prefix=THREAD_NAME)):
         """
         Constructor.
         :param input: Buffer object to read from.
         :param offset: The offset into the input buffer to begin reading from.
         """
-        super().__init__(input)
+        super().__init__(input, threadpool)
         self._len = len(input)
         self.offset = offset
 
@@ -127,7 +113,7 @@ class BufferReader(_Reader):
             self.total_in += block_len
             self.total_out += block.uncompressed_size
             if block.uncompressed_size:
-                self.blockqueue.append(self.pool.submit(inflate, cdata, bytearray(block.uncompressed_size)))  # TODO reuse buffers
+                self.blockqueue.append(self.pool.submit(inflate, cdata, memoryview(bytearray(block.uncompressed_size))))  # TODO reuse buffers
             else:
                 raise EmptyBlock()
         if not len(self.blockqueue):

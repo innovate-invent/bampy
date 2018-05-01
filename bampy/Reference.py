@@ -9,7 +9,7 @@ class Reference:
     """
     __slots__ = 'name', 'length', 'index', '_optional'
 
-    def __init__(self, name: str, length: int, index: int = 0, optional: dict={}):
+    def __init__(self, name: str, length: int, index: int = 0, optional: dict = {}):
         """
         Constructor.
         :param name: Reference sequence name .

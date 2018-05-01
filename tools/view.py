@@ -1,6 +1,6 @@
 """
 view
-samtools view [options] in.sam|in.bam|in.cram [region...]
+bampy view [options] in.sam|in.bam|in.cram [region...]
 
 With no options or regions specified, prints all alignments in the specified input alignment file (in SAM, BAM, or CRAM format) to standard output in SAM format (with no header).
 You may specify one or more space-separated region specifications after the input filename to restrict output to only those alignments which overlap the specified region(s). Use of region specifications requires a coordinate-sorted and indexed input file (in BAM or CRAM format).
@@ -64,18 +64,84 @@ OPTIONS:
 -S Ignored for compatibility with previous samtools versions. Previously this option was required if input was in SAM format, but now the correct format is automatically detected by examining the first few characters of input.
 """
 
-import getopt, sys
+# TODO -t, -U, -T, -L, -M, -r, -R,
+
+import getopt, sys, re, os
+from concurrent.futures import ThreadPoolExecutor
+from itertools import count
+
 from bampy.util import open_buffer
+from bampy.mt.bgzf import zlib
+from bampy.itr import filter
 import bampy.mt as bampy
+
+region_re = re.compile('([^:]+)(?::(\d+)(?:-(\d+)))')
 
 if __name__ == '__main__':
     opts, args = getopt.gnu_getopt(sys.argv, 'bC1uhHc?o:U:t:T:LM:r:R:q:l:m:f:F:G:x:Bs:@:S')
+    opts = dict(opts)
+
+    if '-?' in opts:
+        print(__doc__)
+        exit(0)
 
     assert len(args), "No input file specified"
+    arg_itr = iter(args)
+    next(arg_itr) # Discard arg[0]
 
-    try:
-        input = open_buffer(args[0])
-    except FileNotFoundError:
-        input = open(args[0])
+    # Open input file/stream
+    path = next(arg_itr)
+    if path == '-':
+        input = sys.stdin.buffer
+    else:
+        try:
+            input = open_buffer(path)
+        except FileNotFoundError:
+            input = open(path, 'rb')
 
-    reader = bampy
+    reader = bampy.Reader(input)
+
+    # Parse regions
+    regions = [None]*(len(args)-1)
+    if len(regions):
+        for i, arg in enumerate(arg_itr):
+            match = region_re.fullmatch(arg)
+            if match is not None:
+                regions[i] = (match[1], None if match[2] is None else int(match[2]), None if match[3] is None else int(match[3]))
+
+    # Open output file/stream
+    if '-o' in opts:
+        path = opts['-o']
+        if path == '-':
+            output = sys.stdout.buffer
+        else:
+            try:
+                output = open_buffer(path)
+            except FileNotFoundError:
+                output = open(path, 'wb')
+    else:
+        output = sys.stdout.buffer
+
+    # Count input records and exit if requested
+    if '-c' in opts:
+        output.write(count(reader))
+        exit(0)
+
+    # Bind requested writer to output
+    if '-b' in opts or '-1' in opts:
+        threadpool = ThreadPoolExecutor(max_workers=int(opts['-@']) if '-@' in opts else bampy.DEFAULT_THREADS)
+        writer = bampy.Writer.bgzf(output, 0, reader.header if '-h' in opts else b'', reader.references, threadpool=threadpool, level=zlib.Z_BEST_SPEED if '-1' in opts else zlib.DEFAULT_COMPRESSION_LEVEL)
+    elif '-u' in opts:
+        writer = bampy.Writer.bam(output, 0, reader.header if '-h' in opts else b'', reader.references)
+    elif '-C' in opts:
+        raise NotImplementedError("CRAM format not supported.")
+    else:
+        writer = bampy.Writer.sam(output, 0, reader.header if '-h' in opts else b'', reader.references)
+
+    if '-H' in opts:
+        # Header emitted during writer init so just exit here
+        exit(0)
+
+    # Output data
+    for record in reader:
+        writer(record)

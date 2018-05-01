@@ -56,10 +56,6 @@ class _Reader:
 
         return self.buffer
 
-    @property
-    def buffer(self):
-        return self.buffer
-
     def __iter__(self):
         return self
 

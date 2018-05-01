@@ -79,6 +79,17 @@ if platform.system() == 'Windows':
 else:
     _zlib = C.cdll.LoadLibrary(util.find_library("z"))
 
+# Make return types explicit
+_zlib.inflateInit2_.restype = C.c_int
+_zlib.inflate.restype = C.c_int
+_zlib.inflateEnd.restype = C.c_int
+_zlib.inflateSetDictionary.restype = C.c_int
+_zlib.deflateInit2_.restype = C.c_int
+_zlib.deflate.restype = C.c_int
+#_zlib.deflateBound.restype = C.c_int16
+_zlib.deflateEnd.restype = C.c_int
+_zlib.deflateSetDictionary.restype = C.c_int
+
 
 class zState(C.Structure):
     """
@@ -144,7 +155,7 @@ def raw_compress(src=None, dest=None, mode=Z_FINISH, state=None, level=DEFAULT_C
         err = Z_OK
     else:
         state = zState()
-        err = None
+        err = Z_STREAM_ERROR
 
     if src:
         state.next_in = C.cast(C.pointer(src), C.POINTER(C.c_ubyte))
@@ -157,7 +168,7 @@ def raw_compress(src=None, dest=None, mode=Z_FINISH, state=None, level=DEFAULT_C
         state.next_out = C.cast(C.pointer(dest), C.POINTER(C.c_ubyte))
         state.avail_out = len(dest)
 
-    if err is None:
+    if err == Z_STREAM_ERROR:
         err = _zlib.deflateInit2_(C.byref(state), level, Z_DEFLATED, -wbits, memlevel, Z_DEFAULT_STRATEGY, ZLIB_VERSION, SIZEOF_ZSTATE)
         if err == Z_OK and dictionary:
             err = _zlib.deflateSetDictionary(C.byref(state), C.cast(C.c_char_p(dictionary), C.POINTER(C.c_ubyte)), len(dictionary))
@@ -191,20 +202,20 @@ def raw_decompress(src=None, dest=None, mode=Z_FINISH, state=None, wbits=MAX_WBI
         err = Z_OK
     else:
         state = zState()
-        err = Z_NULL
+        err = Z_STREAM_ERROR
 
     if src:
         state.next_in = C.cast(C.pointer(src), C.POINTER(C.c_ubyte))
         state.avail_in = len(src)
     elif src == Z_NULL:
-        state.next_in = Z_NULL
+        state.next_in = NULL_PTR
         state.avail_in = Z_NULL
 
     if dest:
         state.next_out = C.cast(C.pointer(dest), C.POINTER(C.c_ubyte))
         state.avail_out = len(dest)
 
-    if err == Z_NULL:
+    if err == Z_STREAM_ERROR:
         err = _zlib.inflateInit2_(C.byref(state), -wbits, ZLIB_VERSION, SIZEOF_ZSTATE)
 
     if err == Z_OK:

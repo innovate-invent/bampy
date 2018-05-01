@@ -11,7 +11,7 @@ SIZEOF_UINT32 = C.sizeof(C.c_uint32)
 
 SIZEOF_INT32 = C.sizeof(C.c_int32)
 
-CSTRING_TERMINATOR = (C.c_ubyte * 1)() # Represents null byte used to terminate the record name field
+CSTRING_TERMINATOR = (C.c_ubyte * 1)()  # Represents null byte used to terminate the record name field
 
 
 class RecordFlags(IntFlag):
@@ -100,7 +100,7 @@ class Record:
     @cigar.setter
     def cigar(self, value):
         self._header.block_size += len(value) - len(self._value)
-        #TODO update template length?
+        # TODO update template length?
         self._cigar = value
         self._header.cigar_length = len(value)
         self._update_bin()
@@ -281,7 +281,7 @@ class Record:
         if offset < header.block_size - SIZEOF_RECORDHEADER:
             tags = None
             self._tags_offset = offset
-            #tags = (C.c_ubyte * (header.block_size + SIZEOF_UINT32 - offset - SIZEOF_RECORDHEADER)).from_buffer(buffer, offset)
+            # tags = (C.c_ubyte * (header.block_size + SIZEOF_UINT32 - offset - SIZEOF_RECORDHEADER)).from_buffer(buffer, offset)
         else:
             tags = bytes()
         self._name, self._cigar, self._sequence, self._quality_scores, self._tags = name, cigar, sequence, quality_scores, tags
