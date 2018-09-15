@@ -1,3 +1,14 @@
+"""
+Record.py
+
+Provides the Record class that represents a HTS record in memory.
+Record parses the data lazily upon initial request. 
+The data may or may not be stored contiguously or in BAM format.
+
+Record is a proxy for RecordHeader and the classes representing its body (Packed_CIGAR, Packed_Sequence).
+Any object can be assigned to the record body fields (name, cigar, sequence, quality_scores) so long as the object is indexable
+and returns respective BAM byte values. This does not include tags.
+"""
 import ctypes as C
 from enum import IntFlag
 
