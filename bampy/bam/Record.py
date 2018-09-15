@@ -32,6 +32,9 @@ class RecordFlags(IntFlag):
 
 
 class RecordHeader(C.LittleEndianStructure):
+    """
+    Represents a BAM record header in memory
+    """
     _pack_ = 1
     _fields_ = [
         ("block_size", C.c_int32),  # block_size Length of the remainder of the alignment record int32 t
@@ -78,7 +81,8 @@ class Record:
         self._reference = None if not references or header.reference_id == -1 else references[header.reference_id]
         self._next_reference = None if not references or header.next_reference_id == -1 else references[header.next_reference_id]
         self._buffer = _buffer
-
+    
+    # --- Property getters and setters ---
     @property
     def name(self):
         if self._name is None:
@@ -129,6 +133,9 @@ class Record:
         self._quality_scores = value
 
     def _unpack_tags(self):
+        """
+        Helper to unpack tag data from the end of the Record
+        """
         if not self._tags_offset:
             self._data_from_buffer()
         # Parse tag data
